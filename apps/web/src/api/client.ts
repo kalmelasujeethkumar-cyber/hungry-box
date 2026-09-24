@@ -1,0 +1,367 @@
+import type {
+  AddressDto,
+  AssignOrderInput,
+  AuthUser,
+  CancelOrderInput,
+  CartSummary,
+  CatalogCategory,
+  CatalogProduct,
+  CatalogProductDetail,
+  CheckoutPreviewDto,
+  CreateAddressInput,
+  CreateDeliveryPartnerInput,
+  CreateDeliveryPartnerResultDto,
+  CreateOrderInput,
+  CreatePaymentIntentInput,
+  DeliveryAssignmentDto,
+  DeliveryAssignmentListItemDto,
+  DeliveryAssignmentStatus,
+  DeliveryPartnerCandidateDto,
+  DeliveryPartnerListItemDto,
+  DeliveryPartnerProfileDto,
+  DeliveryTrackingDto,
+  DevPaymentSimulateInput,
+  LoginResponse,
+  NotificationDto,
+  OrderDetailDto,
+  OrderStatus,
+  OrderSummaryDto,
+  PaymentIntentDto,
+  ReviewPartnerDocumentInput,
+  ServiceabilityResult,
+  SetDeliveryPartnerStatusInput,
+  UpdateAddressInput,
+  UpdateDeliveryLocationInput,
+  UpdateDeliveryPartnerInput,
+  UpsertPartnerDocumentInput,
+  VerifyDeliveryPartnerInput,
+  VerifyPaymentInput,
+  VerifyPaymentResultDto,
+} from '@hungrybox/shared';
+import type { CatalogQueryDto } from './query';
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';
+
+export interface ApiRequestOptions {
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  body?: unknown;
+  token?: string | null;
+}
+
+interface ErrorPayload {
+  message?: string | string[];
+  error?: string;
+}
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly details: Record<string, unknown> | null;
+
+  constructor(message: string, status: number, details: Record<string, unknown> | null = null) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.details = details;
+  }
+}
+
+export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    throw new ApiError('Unable to reach the server', 0);
+  }
+
+  if (!response.ok) {
+    const { message, details } = await extractErrorPayload(response);
+    throw new ApiError(message, response.status, details);
+  }
+
+  const text = await response.text();
+  return (text ? (JSON.parse(text) as T) : undefined) as T;
+}
+
+async function extractErrorPayload(
+  response: Response,
+): Promise<{ message: string; details: Record<string, unknown> | null }> {
+  try {
+    const payload = (await response.json()) as Record<string, unknown> & ErrorPayload;
+    let message: string;
+    if (Array.isArray(payload.message)) message = payload.message.join(', ');
+    else if (typeof payload.message === 'string' && payload.message) message = payload.message;
+    else if (typeof payload.error === 'string' && payload.error) message = payload.error;
+    else message = response.statusText || 'Request failed';
+    return { message, details: payload };
+  } catch {
+    return { message: response.statusText || 'Request failed', details: null };
+  }
+}
+
+function queryString(params: object): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') {
+      search.set(key, String(value));
+    }
+  }
+  const encoded = search.toString();
+  return encoded ? `?${encoded}` : '';
+}
+
+export const authApi = {
+  login: (loginId: string, password: string) =>
+    apiRequest<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: { loginId, password },
+    }),
+  me: (token: string) => apiRequest<AuthUser>('/auth/me', { token }),
+};
+
+export const catalogApi = {
+  listProducts: (query: CatalogQueryDto, token: string) =>
+    apiRequest<CatalogProduct[]>(`/catalog/products${queryString(query)}`, { token }),
+  listCategories: (branchId: string, token: string) =>
+    apiRequest<CatalogCategory[]>(`/catalog/categories?branchId=${branchId}`, { token }),
+  getProduct: (productId: string, branchId: string, token: string) =>
+    apiRequest<CatalogProductDetail>(`/catalog/products/${productId}${queryString({ branchId })}`, {
+      token,
+    }),
+};
+
+export const locationsApi = {
+  serviceability: (latitude: number, longitude: number, token: string) =>
+    apiRequest<ServiceabilityResult>('/locations/serviceability', {
+      method: 'POST',
+      body: { latitude, longitude },
+      token,
+    }),
+};
+
+export const addressApi = {
+  list: (token: string) => apiRequest<AddressDto[]>('/addresses', { token }),
+  get: (id: string, token: string) => apiRequest<AddressDto>(`/addresses/${id}`, { token }),
+  create: (input: CreateAddressInput, token: string) =>
+    apiRequest<AddressDto>('/addresses', { method: 'POST', body: input, token }),
+  update: (id: string, input: UpdateAddressInput, token: string) =>
+    apiRequest<AddressDto>(`/addresses/${id}`, { method: 'PATCH', body: input, token }),
+  setDefault: (id: string, token: string) =>
+    apiRequest<AddressDto>(`/addresses/${id}/default`, { method: 'PATCH', token }),
+  delete: (id: string, token: string) =>
+    apiRequest<{ id: string; deleted: true }>(`/addresses/${id}`, { method: 'DELETE', token }),
+};
+
+export const cartApi = {
+  get: (branchId: string, token: string) =>
+    apiRequest<CartSummary>(`/cart?branchId=${branchId}`, { token }),
+  addItem: (branchId: string, productId: string, quantity: number, token: string) =>
+    apiRequest<CartSummary>('/cart/items', {
+      method: 'POST',
+      body: { branchId, productId, quantity },
+      token,
+    }),
+  updateItem: (itemId: string, quantity: number, token: string) =>
+    apiRequest<CartSummary>(`/cart/items/${itemId}`, {
+      method: 'PATCH',
+      body: { quantity },
+      token,
+    }),
+  removeItem: (itemId: string, token: string) =>
+    apiRequest<CartSummary>(`/cart/items/${itemId}`, { method: 'DELETE', token }),
+  clear: (branchId: string, token: string) =>
+    apiRequest<CartSummary>(`/cart?branchId=${branchId}`, { method: 'DELETE', token }),
+};
+
+export const checkoutApi = {
+  preview: (addressId: string, token: string) =>
+    apiRequest<CheckoutPreviewDto>('/checkout/preview', {
+      method: 'POST',
+      body: { addressId },
+      token,
+    }),
+  paymentIntent: (input: CreatePaymentIntentInput, token: string) =>
+    apiRequest<PaymentIntentDto>('/checkout/payment-intent', {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+};
+
+export const paymentsApi = {
+  verify: (input: VerifyPaymentInput, token: string) =>
+    apiRequest<VerifyPaymentResultDto>('/payments/verify', {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+  devSimulate: (input: DevPaymentSimulateInput, token: string) =>
+    apiRequest<void>('/payments/dev/simulate', {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+};
+
+export const ordersApi = {
+  list: (token: string, status?: OrderStatus) =>
+    apiRequest<OrderSummaryDto[]>(`/orders${queryString(status ? { status } : {})}`, { token }),
+  get: (id: string, token: string) => apiRequest<OrderDetailDto>(`/orders/${id}`, { token }),
+  create: (input: CreateOrderInput, token: string) =>
+    apiRequest<OrderDetailDto>('/orders', { method: 'POST', body: input, token }),
+  cancel: (id: string, input: CancelOrderInput, token: string) =>
+    apiRequest<OrderDetailDto>(`/orders/${id}/cancel`, { method: 'POST', body: input, token }),
+};
+
+export const deliveryPartnerApi = {
+  profile: (token: string) => apiRequest<DeliveryPartnerProfileDto>('/delivery/profile', { token }),
+  setAvailability: (availability: 'ONLINE' | 'OFFLINE', token: string) =>
+    apiRequest<DeliveryPartnerProfileDto>('/delivery/availability', {
+      method: 'POST',
+      body: { availability },
+      token,
+    }),
+  updateLocation: (input: UpdateDeliveryLocationInput, token: string) =>
+    apiRequest<{ recordedAt: string }>('/delivery/location', {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+  myAssignments: (token: string, status?: DeliveryAssignmentStatus) =>
+    apiRequest<DeliveryAssignmentListItemDto[]>(
+      `/delivery/assignments${queryString(status ? { status } : {})}`,
+      { token },
+    ),
+  getAssignment: (assignmentId: string, token: string) =>
+    apiRequest<DeliveryAssignmentDto>(`/delivery/assignments/${assignmentId}`, { token }),
+  accept: (assignmentId: string, token: string) =>
+    apiRequest<DeliveryAssignmentDto>(`/delivery/assignments/${assignmentId}/accept`, {
+      method: 'POST',
+      token,
+    }),
+  reject: (assignmentId: string, reason: string | undefined, token: string) =>
+    apiRequest<DeliveryAssignmentDto>(`/delivery/assignments/${assignmentId}/reject`, {
+      method: 'POST',
+      body: { reason },
+      token,
+    }),
+  pickup: (assignmentId: string, token: string) =>
+    apiRequest<DeliveryAssignmentDto>(`/delivery/assignments/${assignmentId}/pickup`, {
+      method: 'POST',
+      token,
+    }),
+  outForDelivery: (assignmentId: string, token: string) =>
+    apiRequest<DeliveryAssignmentDto>(`/delivery/assignments/${assignmentId}/out-for-delivery`, {
+      method: 'POST',
+      token,
+    }),
+  deliver: (assignmentId: string, token: string) =>
+    apiRequest<DeliveryAssignmentDto>(`/delivery/assignments/${assignmentId}/deliver`, {
+      method: 'POST',
+      token,
+    }),
+};
+
+export const branchOrdersApi = {
+  list: (token: string, status?: OrderStatus) =>
+    apiRequest<OrderSummaryDto[]>(`/branch/orders${queryString(status ? { status } : {})}`, {
+      token,
+    }),
+};
+
+export const branchDeliveryApi = {
+  listPartners: (token: string, query?: { status?: string; availability?: string; search?: string }) =>
+    apiRequest<DeliveryPartnerListItemDto[]>(`/branch/partners${queryString(query ?? {})}`, {
+      token,
+    }),
+  getPartner: (partnerId: string, token: string) =>
+    apiRequest<DeliveryPartnerProfileDto>(`/branch/partners/${partnerId}`, { token }),
+  createPartner: (input: CreateDeliveryPartnerInput, token: string) =>
+    apiRequest<CreateDeliveryPartnerResultDto>('/branch/partners', {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+  updatePartner: (partnerId: string, input: UpdateDeliveryPartnerInput, token: string) =>
+    apiRequest<DeliveryPartnerProfileDto>(`/branch/partners/${partnerId}`, {
+      method: 'PATCH',
+      body: input,
+      token,
+    }),
+  setPartnerStatus: (partnerId: string, input: SetDeliveryPartnerStatusInput, token: string) =>
+    apiRequest<DeliveryPartnerProfileDto>(`/branch/partners/${partnerId}/status`, {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+  verifyPartner: (partnerId: string, input: VerifyDeliveryPartnerInput, token: string) =>
+    apiRequest<DeliveryPartnerProfileDto>(`/branch/partners/${partnerId}/verify`, {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+  upsertPartnerDocument: (partnerId: string, input: UpsertPartnerDocumentInput, token: string) =>
+    apiRequest<DeliveryPartnerProfileDto>(`/branch/partners/${partnerId}/documents`, {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+  reviewPartnerDocument: (
+    partnerId: string,
+    documentId: string,
+    input: ReviewPartnerDocumentInput,
+    token: string,
+  ) =>
+    apiRequest<DeliveryPartnerProfileDto>(
+      `/branch/partners/${partnerId}/documents/${documentId}/review`,
+      { method: 'POST', body: input, token },
+    ),
+  candidates: (token: string, branchId?: string) =>
+    apiRequest<DeliveryPartnerCandidateDto[]>(
+      `/branch/partners/candidates${queryString(branchId ? { branchId } : {})}`,
+      { token },
+    ),
+  listAssignments: (token: string, status?: DeliveryAssignmentStatus) =>
+    apiRequest<DeliveryAssignmentListItemDto[]>(
+      `/branch/assignments${queryString(status ? { status } : {})}`,
+      { token },
+    ),
+  assign: (orderId: string, input: AssignOrderInput, token: string) =>
+    apiRequest<DeliveryAssignmentDto>(`/branch/orders/${orderId}/assign`, {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+  cancelAssignment: (orderId: string, assignmentId: string, reason: string | undefined, token: string) =>
+    apiRequest<DeliveryAssignmentDto>(`/branch/orders/${orderId}/assignments/${assignmentId}/cancel`, {
+      method: 'POST',
+      body: { reason },
+      token,
+    }),
+};
+
+export const deliveryTrackingApi = {
+  get: (orderId: string, token: string) =>
+    apiRequest<DeliveryTrackingDto>(`/orders/${orderId}/delivery-tracking`, { token }),
+};
+
+export const notificationsApi = {
+  list: (token: string) => apiRequest<NotificationDto[]>('/notifications', { token }),
+  markRead: (notificationId: string, token: string) =>
+    apiRequest<NotificationDto>(`/notifications/${notificationId}/read`, {
+      method: 'POST',
+      token,
+    }),
+  markAllRead: (token: string) => apiRequest<void>('/notifications/read-all', { method: 'POST', token }),
+};

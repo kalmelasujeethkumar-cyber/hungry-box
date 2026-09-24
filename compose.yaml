@@ -1,0 +1,26 @@
+# Local development PostgreSQL for Hungry Box.
+# Usage: docker compose up -d
+# This file/config uses local-only development placeholders. Production runs on
+# Railway with real credentials supplied via environment variables.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hungrybox-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hungrybox
+    ports:
+      - '5432:5432'
+    volumes:
+      - hungrybox_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d hungrybox']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  hungrybox_pgdata:

@@ -1,0 +1,35 @@
+{
+  "name": "hungrybox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hungry Box - multi-branch food delivery platform. First branch Guntur (AP, India); designed for additional branches without code changes.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "dev:web": "npm run dev --workspace @hungrybox/web",
+    "dev:api": "npm run dev --workspace @hungrybox/api",
+    "build": "npm run build --workspace @hungrybox/shared && npm run build --workspace @hungrybox/api && npm run build --workspace @hungrybox/web",
+    "build:api": "npm run build --workspace @hungrybox/api",
+    "build:web": "npm run build --workspace @hungrybox/web",
+    "typecheck": "npm run build --workspace @hungrybox/shared && npm run typecheck --workspace @hungrybox/api && npm run typecheck --workspace @hungrybox/web",
+    "lint": "npm run lint --workspace @hungrybox/api && npm run lint --workspace @hungrybox/web",
+    "test": "npm run test --workspace @hungrybox/api && npm run test --workspace @hungrybox/web",
+    "test:api": "npm run test --workspace @hungrybox/api",
+    "test:web": "npm run test --workspace @hungrybox/web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "npm run db:generate --workspace @hungrybox/api",
+    "db:studio": "npm run db:studio --workspace @hungrybox/api",
+    "db:migrate": "npm run db:migrate --workspace @hungrybox/api",
+    "db:seed": "npm run db:seed --workspace @hungrybox/api"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.8"
+  }
+}

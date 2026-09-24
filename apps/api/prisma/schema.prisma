@@ -1,0 +1,601 @@
+// Hungry Box — Phase 2 schema: identity, RBAC, multi-branch, catalog core.
+// Connection URL lives in prisma.config.ts (env DATABASE_URL), not here.
+// Money is stored in integer minor units (paise): priceMinor / discountMinor.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  SUPER_ADMIN
+  BRANCH_MANAGER
+  DELIVERY_PARTNER
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum BranchStatus {
+  ACTIVE
+  PAUSED
+  INACTIVE
+}
+
+enum CatalogStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum BranchProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum OrderStatus {
+  PLACED
+  CONFIRMED
+  PREPARING
+  READY_FOR_PICKUP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  UPI
+  CARD
+  NET_BANKING
+  WALLET
+}
+
+enum DeliveryPartnerStatus {
+  PENDING_VERIFICATION
+  DOCUMENT_REVIEW
+  VERIFIED
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+enum DeliveryAvailability {
+  OFFLINE
+  ONLINE
+  ON_DELIVERY
+}
+
+enum DeliveryPartnerType {
+  FULL_TIME
+  PART_TIME
+  GIG
+}
+
+enum DeliveryAssignmentStatus {
+  ASSIGNED
+  ACCEPTED
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  REJECTED
+  CANCELLED
+}
+
+enum DocumentType {
+  AADHAAR
+  PAN
+  ADDRESS_PROOF
+  DRIVING_LICENSE
+  RC
+  INSURANCE
+  BANK_PROOF
+  PROFILE_PHOTO
+}
+
+enum DocumentStatus {
+  PENDING
+  UPLOADED
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  loginId      String     @unique
+  email        String?    @unique
+  name         String?
+  phone        String?
+  passwordHash String
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  branchId     String?
+  branch       Branch?    @relation(fields: [branchId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  lastLoginAt  DateTime?
+  addresses    Address[]   @relation("CustomerAddresses")
+  carts        Cart[]
+  orders       Order[]
+  payments     Payment[]
+  deliveryProfile DeliveryPartnerProfile?
+  notifications Notification[]
+
+  @@index([role])
+  @@index([status])
+  @@index([branchId])
+}
+
+model Branch {
+  id               String        @id @default(cuid())
+  code             String        @unique
+  name             String
+  city             String
+  state            String
+  country          String
+  address          String?
+  latitude         Decimal?
+  longitude        Decimal?
+  deliveryRadiusKm Decimal
+  status           BranchStatus  @default(ACTIVE)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  users            User[]
+  branchProducts   BranchProduct[]
+  carts            Cart[]
+  auditEvents      AuditEvent[]
+  orders           Order[]
+  deliveryPartners   DeliveryPartnerProfile[]
+  deliveryAssignments DeliveryAssignment[]
+
+  @@index([status])
+}
+
+model Category {
+  id          String         @id @default(cuid())
+  name        String
+  slug        String         @unique
+  description String?
+  imageUrl    String?
+  status      CatalogStatus  @default(ACTIVE)
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  products    Product[]
+
+  @@index([status])
+}
+
+model Product {
+  id             String          @id @default(cuid())
+  name           String
+  slug           String          @unique
+  description    String?
+  categoryId     String?
+  category       Category?       @relation(fields: [categoryId], references: [id])
+  status         CatalogStatus   @default(ACTIVE)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  images         ProductImage[]
+  branchProducts BranchProduct[]
+  orderItems     OrderItem[]
+
+  @@index([status])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  imageUrl  String
+  altText   String?
+  sortOrder Int     @default(0)
+  isPrimary Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model BranchProduct {
+  id            String             @id @default(cuid())
+  branchId      String
+  branch        Branch             @relation(fields: [branchId], references: [id])
+  productId     String
+  product       Product            @relation(fields: [productId], references: [id])
+  priceMinor    Int
+  discountMinor Int                @default(0)
+  isAvailable   Boolean            @default(true)
+  status        BranchProductStatus @default(ACTIVE)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  cartItems     CartItem[]
+
+  @@unique([branchId, productId])
+  @@index([branchId, status])
+  @@index([branchId, isAvailable])
+}
+
+model Address {
+  id                  String   @id @default(cuid())
+  customerId          String
+  customer            User     @relation("CustomerAddresses", fields: [customerId], references: [id], onDelete: Cascade)
+  label               String   @default("OTHER")
+  recipientName       String
+  phone               String?
+  houseFlat           String
+  streetArea          String
+  landmark            String?
+  city                String
+  state               String
+  postalCode          String
+  latitude            Decimal?
+  longitude           Decimal?
+  deliveryInstructions String?
+  isDefault           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([customerId])
+}
+
+model Cart {
+  id         String     @id @default(cuid())
+  customerId String
+  customer   User       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  branchId   String
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  items      CartItem[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([customerId, branchId])
+  @@index([branchId])
+}
+
+model CartItem {
+  id               String       @id @default(cuid())
+  cartId           String
+  cart             Cart         @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  branchProductId  String
+  branchProduct    BranchProduct @relation(fields: [branchProductId], references: [id])
+  quantity         Int
+  unitPriceMinor   Int
+  unitDiscountMinor Int
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([cartId, branchProductId])
+  @@index([branchProductId])
+}
+
+model Order {
+  id                  String        @id @default(cuid())
+  orderNumber         String        @unique
+  customerId          String
+  customer            User          @relation(fields: [customerId], references: [id])
+  branchId            String
+  branch              Branch        @relation(fields: [branchId], references: [id])
+  status              OrderStatus   @default(PLACED)
+  paymentStatus       PaymentStatus @default(PENDING)
+  subtotalMinor       Int
+  discountMinor       Int
+  deliveryFeeMinor    Int
+  taxMinor            Int
+  totalMinor          Int
+  notes               String?
+  placedAt            DateTime      @default(now())
+  confirmedAt         DateTime?
+  preparingAt         DateTime?
+  readyAt             DateTime?
+  pickedUpAt          DateTime?
+  outForDeliveryAt    DateTime?
+  deliveredAt         DateTime?
+  cancelledAt         DateTime?
+  cancelledByRole     String?
+  cancellationReason  String?
+  items               OrderItem[]
+  address             OrderAddress?
+  payments            Payment[]
+  events              OrderEvent[]
+  deliveryAssignments DeliveryAssignment[]
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([customerId, createdAt])
+  @@index([customerId, status])
+  @@index([branchId, status])
+  @@index([branchId, createdAt])
+  @@index([status])
+  @@index([placedAt])
+}
+
+model OrderItem {
+  id                String         @id @default(cuid())
+  orderId           String
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String?
+  product           Product?       @relation(fields: [productId], references: [id])
+  productName       String
+  quantity          Int
+  unitPriceMinor    Int
+  unitDiscountMinor Int
+  lineSubtotalMinor Int
+  lineDiscountMinor Int
+  lineTotalMinor    Int
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderAddress {
+  id                   String  @id @default(cuid())
+  orderId              String  @unique
+  order                Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  label                String?
+  recipientName        String
+  phone                String?
+  houseFlat            String
+  streetArea           String
+  landmark             String?
+  city                 String
+  state                String
+  postalCode           String
+  latitude             Decimal?
+  longitude            Decimal?
+  deliveryInstructions String?
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  customerId        String
+  customer          User          @relation(fields: [customerId], references: [id])
+  orderId           String?
+  order             Order?        @relation(fields: [orderId], references: [id])
+  provider          String
+  providerPaymentId String        @unique
+  providerOrderId   String?
+  amountMinor       Int
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  method            PaymentMethod
+  initiatedAt       DateTime      @default(now())
+  paidAt            DateTime?
+  failedAt          DateTime?
+  failureReason     String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([customerId])
+  @@index([orderId])
+  @@index([status])
+}
+
+model OrderEvent {
+  id          String       @id @default(cuid())
+  orderId     String
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kind        String
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus?
+  actorRole   String?
+  createdAt   DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model AuditEvent {
+  id         String    @id @default(cuid())
+  actorRole  String
+  actorId    String?
+  kind       String
+  entityType String
+  entityId   String?
+  branchId   String?
+  message    String?
+  createdAt  DateTime  @default(now())
+
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model IdempotencyKey {
+  key        String   @id
+  customerId String
+  orderId    String?  @unique
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+}
+
+model OrderNumberCounter {
+  date String @id
+  seq  Int    @default(0)
+}
+
+model DevPaymentRecord {
+  id                String        @id @default(cuid())
+  providerPaymentId String        @unique
+  amountMinor       Int
+  currency          String        @default("INR")
+  method            PaymentMethod
+  status            PaymentStatus @default(PENDING)
+  failureReason     String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([status])
+}
+
+// Phase 5 — delivery partners, assignments, location tracking, notifications.
+// Sensitive identity/bank values are stored only as masked references
+// (e.g. "XXXX XXXX 1234"); full documents live in object storage (later) and
+// are referenced by DeliveryPartnerDocument.documentReference, never in git.
+
+model DeliveryPartnerProfile {
+  id                   String                  @id @default(cuid())
+  partnerId            String                  @unique
+  userId               String                  @unique
+  user                 User                    @relation(fields: [userId], references: [id])
+  branchId             String
+  branch               Branch                  @relation(fields: [branchId], references: [id])
+  // Personal
+  fullName             String
+  mobile               String?
+  email                String?
+  dateOfBirth          DateTime?
+  gender               String?
+  emergencyContactName String?
+  emergencyContactPhone String?
+  profilePhotoUrl      String?
+  // Address
+  houseFlat            String?
+  streetArea           String?
+  city                 String?
+  state                String?
+  postalCode           String?
+  latitude             Decimal?
+  longitude            Decimal?
+  // Identity / KYC (masked references only)
+  identityVerified     Boolean                 @default(false)
+  addressProofVerified Boolean                 @default(false)
+  // Driving
+  drivingLicenceNumber String?
+  licenceType          String?
+  licenceExpiry        DateTime?
+  licenceVerified      Boolean                 @default(false)
+  // Vehicle
+  vehicleType          String?
+  vehicleNumber        String?
+  vehicleBrand         String?
+  vehicleModel         String?
+  vehicleColour        String?
+  registrationYear     Int?
+  rcReference          String?
+  insuranceReference   String?
+  insuranceExpiry      DateTime?
+  ownVehicle           Boolean?
+  // Bank / payout (masked references only)
+  accountHolderName    String?
+  bankName             String?
+  accountNumberMasked  String?
+  ifsc                 String?
+  payoutVerified       Boolean                 @default(false)
+  // Hungry Box
+  partnerType          DeliveryPartnerType?
+  joinedAt             DateTime?
+  status               DeliveryPartnerStatus   @default(PENDING_VERIFICATION)
+  availability         DeliveryAvailability    @default(OFFLINE)
+  wentOnlineAt         DateTime?
+  wentOfflineAt        DateTime?
+  rejectionReason      String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  documents            DeliveryPartnerDocument[]
+  assignments          DeliveryAssignment[]
+  locations            DeliveryPartnerLocation[]
+
+  @@index([branchId, status])
+  @@index([branchId, availability])
+  @@index([status])
+}
+
+model DeliveryPartnerDocument {
+  id                String @id @default(cuid())
+  deliveryPartnerId String
+  deliveryPartner   DeliveryPartnerProfile @relation(fields: [deliveryPartnerId], references: [id], onDelete: Cascade)
+  type              DocumentType
+  documentReference String?
+  status            DocumentStatus @default(UPLOADED)
+  verificationNote  String?
+  verifiedById      String?
+  verifiedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([deliveryPartnerId, type])
+  @@index([deliveryPartnerId, status])
+}
+
+model DeliveryAssignment {
+  id                String                  @id @default(cuid())
+  orderId           String
+  order             Order                   @relation(fields: [orderId], references: [id])
+  deliveryPartnerId String
+  deliveryPartner   DeliveryPartnerProfile  @relation(fields: [deliveryPartnerId], references: [id])
+  branchId          String
+  branch            Branch                  @relation(fields: [branchId], references: [id])
+  status            DeliveryAssignmentStatus @default(ASSIGNED)
+  assignedAt        DateTime                @default(now())
+  acceptedAt        DateTime?
+  rejectedAt        DateTime?
+  pickedUpAt        DateTime?
+  outForDeliveryAt  DateTime?
+  deliveredAt       DateTime?
+  cancelledAt       DateTime?
+  rejectionReason   String?
+  notes             String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  locations         DeliveryPartnerLocation[]
+
+  @@index([orderId, status])
+  @@index([deliveryPartnerId, createdAt])
+  @@index([branchId, status])
+}
+
+model DeliveryPartnerLocation {
+  id                String              @id @default(cuid())
+  deliveryPartnerId String
+  deliveryPartner   DeliveryPartnerProfile @relation(fields: [deliveryPartnerId], references: [id], onDelete: Cascade)
+  assignmentId      String?
+  assignment        DeliveryAssignment?  @relation(fields: [assignmentId], references: [id])
+  latitude          Decimal
+  longitude         Decimal
+  accuracy          Decimal?
+  heading           Decimal?
+  speed             Decimal?
+  recordedAt        DateTime             @default(now())
+
+  @@index([deliveryPartnerId, recordedAt])
+  @@index([assignmentId, recordedAt])
+}
+
+model Notification {
+  id              String   @id @default(cuid())
+  recipientUserId String
+  recipient       User     @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+  type            String
+  title           String
+  body            String?
+  data            Json?
+  readAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([recipientUserId, readAt])
+  @@index([recipientUserId, createdAt])
+}
+
+model PartnerIdCounter {
+  id  String @id @default("partner")
+  seq Int    @default(0)
+}
