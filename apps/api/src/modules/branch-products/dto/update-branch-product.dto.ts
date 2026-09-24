@@ -1,4 +1,5 @@
-import { IsBoolean, IsEmpty, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBoolean, IsEmpty, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import type { BranchProductStatus } from '@hungrybox/shared';
 
 export class UpdateBranchProductDto {
   @IsEmpty()
@@ -22,4 +23,8 @@ export class UpdateBranchProductDto {
   @IsOptional()
   @IsBoolean()
   isAvailable?: boolean;
+
+  @IsOptional()
+  @IsEnum(['ACTIVE', 'INACTIVE'] as const)
+  status?: BranchProductStatus;
 }

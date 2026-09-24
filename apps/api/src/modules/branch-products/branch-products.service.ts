@@ -1,22 +1,26 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { BranchStatus, CatalogStatus } from '../../generated/prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { BranchProductDto, UserRole } from '@hungrybox/shared';
+import {
+  BranchProductStatus,
+  BranchStatus,
+  CatalogStatus,
+  Prisma,
+} from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditKinds, AuditService } from '../audit/audit.service';
 import { CreateBranchProductDto } from './dto/create-branch-product.dto';
+import { UpdateBranchProductDto } from './dto/update-branch-product.dto';
 
-export interface BranchProductItem {
-  id: string;
-  productId: string;
-  priceMinor: number;
-  discountMinor: number;
-  effectivePriceMinor: number;
-  isAvailable: boolean;
-  status: 'ACTIVE' | 'INACTIVE';
-  product: {
-    name: string;
-    slug: string;
-    categoryName: string | null;
-    categorySlug: string | null;
-  };
+export interface BranchProductActor {
+  role: UserRole;
+  branchId: string | null;
+  userId: string;
 }
 
 const branchProductSelect = {
@@ -37,23 +41,42 @@ const branchProductSelect = {
   },
 } as const;
 
+type BranchProductRow = {
+  id: string;
+  productId: string;
+  priceMinor: number;
+  discountMinor: number;
+  isAvailable: boolean;
+  status: BranchProductStatus;
+  product: {
+    name: string;
+    slug: string;
+    category: { name: string; slug: string } | null;
+  };
+};
+
 @Injectable()
 export class BranchProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
-  async create(dto: CreateBranchProductDto): Promise<BranchProductItem> {
+  async create(actor: BranchProductActor, dto: CreateBranchProductDto): Promise<BranchProductDto> {
     const db = this.prisma.requireClient();
+    this.assertBranchManaged(actor, dto.branchId);
+
     const branch = await db.branch.findUnique({
       where: { id: dto.branchId },
       select: { id: true, status: true },
     });
     if (!branch || branch.status !== BranchStatus.ACTIVE) {
-      throw new NotFoundException('Branch not found or inactive');
+      throw new BadRequestException('Branch not found or inactive');
     }
 
     const product = await db.product.findUnique({
       where: { id: dto.productId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, name: true },
     });
     if (!product || product.status !== CatalogStatus.ACTIVE) {
       throw new NotFoundException('Product not found or inactive');
@@ -61,23 +84,42 @@ export class BranchProductsService {
 
     const discountMinor = dto.discountMinor ?? 0;
     if (discountMinor > dto.priceMinor) {
-      throw new ConflictException('Discount cannot exceed price');
+      throw new BadRequestException('Discount cannot exceed price');
     }
 
-    const row = await db.branchProduct.create({
-      data: {
-        branchId: dto.branchId,
-        productId: dto.productId,
-        priceMinor: dto.priceMinor,
-        discountMinor,
-        isAvailable: dto.isAvailable ?? true,
-      },
-      select: branchProductSelect,
+    let row: BranchProductRow;
+    try {
+      row = await db.branchProduct.create({
+        data: {
+          branchId: dto.branchId,
+          productId: dto.productId,
+          priceMinor: dto.priceMinor,
+          discountMinor,
+          isAvailable: dto.isAvailable ?? true,
+        },
+        select: branchProductSelect,
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Branch product already exists for this product');
+      }
+      throw error;
+    }
+
+    await this.audit.record({
+      actorRole: actor.role,
+      actorId: actor.userId,
+      kind: AuditKinds.BRANCH_PRODUCT_CREATED,
+      entityType: 'branch_product',
+      entityId: row.id,
+      branchId: dto.branchId,
+      message: `Branch product configured for ${product.name}`,
     });
+
     return this.toItem(row);
   }
 
-  async listForBranch(branchId: string): Promise<BranchProductItem[]> {
+  async listForBranch(branchId: string): Promise<BranchProductDto[]> {
     const db = this.prisma.requireClient();
     const branch = await db.branch.findUnique({
       where: { id: branchId },
@@ -94,19 +136,124 @@ export class BranchProductsService {
     return rows.map((row) => this.toItem(row));
   }
 
-  private toItem(row: {
-    id: string;
-    productId: string;
-    priceMinor: number;
-    discountMinor: number;
-    isAvailable: boolean;
-    status: 'ACTIVE' | 'INACTIVE';
-    product: {
-      name: string;
-      slug: string;
-      category: { name: string; slug: string } | null;
-    };
-  }): BranchProductItem {
+  async update(
+    actor: BranchProductActor,
+    branchProductId: string,
+    dto: UpdateBranchProductDto,
+  ): Promise<BranchProductDto> {
+    const db = this.prisma.requireClient();
+    const enforcedBranchId = this.enforcedBranchId(actor);
+    const existing = await db.branchProduct.findUnique({
+      where: { id: branchProductId },
+      select: {
+        id: true,
+        branchId: true,
+        priceMinor: true,
+        discountMinor: true,
+        product: { select: { name: true } },
+      },
+    });
+    if (!existing || (enforcedBranchId !== null && existing.branchId !== enforcedBranchId)) {
+      throw new NotFoundException('Branch product not found');
+    }
+
+    const priceMinor = dto.priceMinor ?? existing.priceMinor;
+    const discountMinor = dto.discountMinor ?? existing.discountMinor;
+    if (discountMinor > priceMinor) {
+      throw new BadRequestException('Discount cannot exceed price');
+    }
+
+    await db.$transaction(async (tx) => {
+      await tx.branchProduct.update({
+        where: { id: existing.id },
+        data: {
+          ...(dto.priceMinor !== undefined ? { priceMinor: dto.priceMinor } : {}),
+          ...(dto.discountMinor !== undefined ? { discountMinor: dto.discountMinor } : {}),
+          ...(dto.isAvailable !== undefined ? { isAvailable: dto.isAvailable } : {}),
+          ...(dto.status !== undefined ? { status: dto.status } : {}),
+        },
+      });
+      await this.audit.record(
+        {
+          actorRole: actor.role,
+          actorId: actor.userId,
+          kind: AuditKinds.BRANCH_PRODUCT_UPDATED,
+          entityType: 'branch_product',
+          entityId: existing.id,
+          branchId: existing.branchId,
+          message: `Branch product updated for ${existing.product.name}`,
+        },
+        tx,
+      );
+    });
+
+    return this.getById(existing.id);
+  }
+
+  async remove(actor: BranchProductActor, branchProductId: string): Promise<BranchProductDto> {
+    const db = this.prisma.requireClient();
+    const enforcedBranchId = this.enforcedBranchId(actor);
+    const existing = await db.branchProduct.findUnique({
+      where: { id: branchProductId },
+      select: { id: true, branchId: true, product: { select: { name: true } } },
+    });
+    if (!existing || (enforcedBranchId !== null && existing.branchId !== enforcedBranchId)) {
+      throw new NotFoundException('Branch product not found');
+    }
+
+    await db.$transaction(async (tx) => {
+      await tx.branchProduct.update({
+        where: { id: existing.id },
+        data: { status: BranchProductStatus.INACTIVE, isAvailable: false },
+      });
+      await this.audit.record(
+        {
+          actorRole: actor.role,
+          actorId: actor.userId,
+          kind: AuditKinds.BRANCH_PRODUCT_DEACTIVATED,
+          entityType: 'branch_product',
+          entityId: existing.id,
+          branchId: existing.branchId,
+          message: `Branch product deactivated for ${existing.product.name}`,
+        },
+        tx,
+      );
+    });
+
+    return this.getById(existing.id);
+  }
+
+  /** Branch products are never hard-deleted; only soft-deactivated. */
+  private async getById(branchProductId: string): Promise<BranchProductDto> {
+    const db = this.prisma.requireClient();
+    const row = await db.branchProduct.findUnique({
+      where: { id: branchProductId },
+      select: branchProductSelect,
+    });
+    if (!row) {
+      throw new NotFoundException('Branch product not found');
+    }
+    return this.toItem(row);
+  }
+
+  private assertBranchManaged(actor: BranchProductActor, branchId: string): void {
+    const enforcedBranchId = this.enforcedBranchId(actor);
+    if (enforcedBranchId !== null && enforcedBranchId !== branchId) {
+      throw new ForbiddenException('Cannot configure products for another branch');
+    }
+  }
+
+  private enforcedBranchId(actor: BranchProductActor): string | null {
+    if (actor.role === 'BRANCH_MANAGER') {
+      if (!actor.branchId) {
+        throw new ForbiddenException('Branch manager has no assigned branch');
+      }
+      return actor.branchId;
+    }
+    return null;
+  }
+
+  private toItem(row: BranchProductRow): BranchProductDto {
     return {
       id: row.id,
       productId: row.productId,

@@ -146,6 +146,7 @@ export class DeliveryAssignmentService {
             kind: AuditKinds.DELIVERY_ASSIGNED,
             entityType: 'delivery_assignment',
             entityId: created.id,
+            branchId: order.branchId,
             message: `Assigned order ${order.orderNumber} to partner`,
           },
           tx,
@@ -204,6 +205,7 @@ export class DeliveryAssignmentService {
           kind: AuditKinds.DELIVERY_CANCELLED,
           entityType: 'delivery_assignment',
           entityId: assignmentId,
+          branchId: order.branchId,
           message: `Cancelled assignment for order ${order.orderNumber}`,
         },
         tx,
@@ -293,6 +295,7 @@ export class DeliveryAssignmentService {
           kind: AuditKinds.DELIVERY_ACCEPTED,
           entityType: 'delivery_assignment',
           entityId: assignmentId,
+          branchId: profile.branchId,
           message: 'Assignment accepted',
         },
         tx,
@@ -328,6 +331,7 @@ export class DeliveryAssignmentService {
           kind: AuditKinds.DELIVERY_REJECTED,
           entityType: 'delivery_assignment',
           entityId: assignmentId,
+          branchId: profile.branchId,
           message: reason ? `Assignment rejected: ${reason}` : 'Assignment rejected',
         },
         tx,
@@ -366,7 +370,13 @@ export class DeliveryAssignmentService {
         where: { id: assignment.id },
         data: { status: 'PICKED_UP', pickedUpAt: now },
       });
-      await this.advanceOrder(tx, orderRow.id, orderRow.status, 'OUT_FOR_DELIVERY', 'DELIVERY_PARTNER');
+      await this.advanceOrder(
+        tx,
+        orderRow.id,
+        orderRow.status,
+        'OUT_FOR_DELIVERY',
+        'DELIVERY_PARTNER',
+      );
       await this.audit.record(
         {
           actorRole: 'DELIVERY_PARTNER',
@@ -374,6 +384,7 @@ export class DeliveryAssignmentService {
           kind: AuditKinds.DELIVERY_PICKED_UP,
           entityType: 'delivery_assignment',
           entityId: assignment.id,
+          branchId: profile.branchId,
           message: 'Order picked up',
         },
         tx,
@@ -405,6 +416,7 @@ export class DeliveryAssignmentService {
           kind: AuditKinds.DELIVERY_OUT_FOR_DELIVERY,
           entityType: 'delivery_assignment',
           entityId: assignmentId,
+          branchId: profile.branchId,
           message: 'Out for delivery',
         },
         tx,
@@ -455,6 +467,7 @@ export class DeliveryAssignmentService {
           kind: AuditKinds.DELIVERY_COMPLETED,
           entityType: 'delivery_assignment',
           entityId: assignment.id,
+          branchId: profile.branchId,
           message: 'Order delivered',
         },
         tx,
@@ -483,7 +496,10 @@ export class DeliveryAssignmentService {
       throw new DeliveryConflictException('delivery.partner_offline', 'Partner is offline');
     }
     if (await this.partners.hasActiveDelivery(partner.id)) {
-      throw new DeliveryConflictException('delivery.partner_busy', 'Partner has an active delivery');
+      throw new DeliveryConflictException(
+        'delivery.partner_busy',
+        'Partner has an active delivery',
+      );
     }
   }
 
@@ -599,11 +615,11 @@ export class DeliveryAssignmentService {
     return toAssignmentDto(row);
   }
 
-  private async partnerProfileFor(userId: string): Promise<{ id: string }> {
+  private async partnerProfileFor(userId: string): Promise<{ id: string; branchId: string }> {
     const db = this.prisma.requireClient();
     const profile = await db.deliveryPartnerProfile.findUnique({
       where: { userId },
-      select: { id: true },
+      select: { id: true, branchId: true },
     });
     if (!profile) {
       throw new NotFoundException('Delivery partner profile not found');

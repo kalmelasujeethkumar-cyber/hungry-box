@@ -17,6 +17,11 @@ import DeliveryDeliveriesPage from '../pages/delivery/DeliveryDeliveriesPage';
 import DeliveryLayout from '../pages/delivery/DeliveryLayout';
 import DeliveryProfilePage from '../pages/delivery/DeliveryProfilePage';
 import ManagerHomePage from '../pages/manager/ManagerHomePage';
+import ManagerOrdersPage from '../pages/manager/ManagerOrdersPage';
+import ManagerOrderDetailPage from '../pages/manager/ManagerOrderDetailPage';
+import ManagerCatalogPage from '../pages/manager/ManagerCatalogPage';
+import ManagerSettingsPage from '../pages/manager/ManagerSettingsPage';
+import ManagerAuditPage from '../pages/manager/ManagerAuditPage';
 import ManagerAssignmentsPage from '../pages/manager/ManagerAssignmentsPage';
 import ManagerPartnerDetailPage from '../pages/manager/ManagerPartnerDetailPage';
 import ManagerPartnersPage from '../pages/manager/ManagerPartnersPage';
@@ -78,6 +83,56 @@ export const appRouter = createBrowserRouter([
       <RequireAuth>
         <RequireRole roles={['BRANCH_MANAGER']}>
           <ManagerAssignmentsPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/manager/orders',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['BRANCH_MANAGER']}>
+          <ManagerOrdersPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/manager/orders/:orderId',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['BRANCH_MANAGER']}>
+          <ManagerOrderDetailPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/manager/catalog',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['BRANCH_MANAGER']}>
+          <ManagerCatalogPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/manager/settings',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['BRANCH_MANAGER']}>
+          <ManagerSettingsPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/manager/audit',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['BRANCH_MANAGER']}>
+          <ManagerAuditPage />
         </RequireRole>
       </RequireAuth>
     ),

@@ -4,8 +4,13 @@ import { useAuth } from '../../auth/auth-context';
 import { HOME_PATH } from '../../routes/paths';
 
 const NAV = [
+  { to: '/manager', label: 'Overview' },
+  { to: '/manager/orders', label: 'Orders' },
   { to: '/manager/partners', label: 'Partners' },
   { to: '/manager/assignments', label: 'Assignments' },
+  { to: '/manager/catalog', label: 'Catalogue' },
+  { to: '/manager/settings', label: 'Settings' },
+  { to: '/manager/audit', label: 'Audit' },
 ];
 
 export default function ManagerLayout({
@@ -26,12 +31,12 @@ export default function ManagerLayout({
           <Link to={HOME_PATH} className="text-xl font-extrabold tracking-tight text-brand-navy">
             hungry box
           </Link>
-          <nav className="hidden items-center gap-2 sm:flex">
+          <nav className="hidden items-center gap-1 lg:flex">
             {NAV.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
-                className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:text-brand-teal"
+                className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-slate-600 hover:text-brand-teal"
               >
                 {item.label}
               </Link>
@@ -60,7 +65,7 @@ export default function ManagerLayout({
             </p>
             <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-brand-navy">{title}</h1>
           </div>
-          <div className="flex gap-2 sm:hidden" aria-label="Manager navigation">
+          <div className="flex flex-wrap gap-2 lg:hidden" aria-label="Manager navigation">
             {NAV.map((item) => (
               <Link
                 key={item.to}

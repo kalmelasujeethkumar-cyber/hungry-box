@@ -13,7 +13,12 @@ import type {
   DeliveryPartnerProfileDto,
   UserRole,
 } from '@hungrybox/shared';
-import type { DeliveryAssignmentStatus, DocumentType, Prisma, PrismaClient } from '../../generated/prisma/client';
+import type {
+  DeliveryAssignmentStatus,
+  DocumentType,
+  Prisma,
+  PrismaClient,
+} from '../../generated/prisma/client';
 import { DeliveryAvailability, UserStatus } from '../../generated/prisma/enums';
 import { normalizeLoginId } from '../../common/utils/login-id';
 import { DeliveryConflictException } from '../../common/exceptions/delivery-conflict.exception';
@@ -55,7 +60,10 @@ export class DeliveryPartnerService {
     private readonly audit: AuditService,
   ) {}
 
-  async create(actor: PartnerActor, dto: CreateDeliveryPartnerDto): Promise<CreateDeliveryPartnerResultDto> {
+  async create(
+    actor: PartnerActor,
+    dto: CreateDeliveryPartnerDto,
+  ): Promise<CreateDeliveryPartnerResultDto> {
     const db = this.prisma.requireClient();
     const branchId = this.resolveCreateBranch(actor, dto.branchId);
     const loginId = normalizeLoginId(dto.loginId);
@@ -123,6 +131,7 @@ export class DeliveryPartnerService {
           kind: AuditKinds.PARTNER_CREATED,
           entityType: 'delivery_partner_profile',
           entityId: profile.id,
+          branchId: branch.id,
           message: `Delivery partner created (${partnerId})`,
         },
         tx,
@@ -142,7 +151,10 @@ export class DeliveryPartnerService {
     });
   }
 
-  async list(actor: PartnerActor, query: PartnerListQueryDto): Promise<DeliveryPartnerListItemDto[]> {
+  async list(
+    actor: PartnerActor,
+    query: PartnerListQueryDto,
+  ): Promise<DeliveryPartnerListItemDto[]> {
     const db = this.prisma.requireClient();
     const enforcedBranchId = this.enforcedBranchId(actor);
     const where: Prisma.DeliveryPartnerProfileWhereInput = {};
@@ -188,13 +200,9 @@ export class DeliveryPartnerService {
         branch: { select: { id: true, name: true, code: true, city: true } },
       },
     });
-    const counts = await this.activeDeliveryCounts(
-      rows.map((row) => row.id),
-    );
+    const counts = await this.activeDeliveryCounts(rows.map((row) => row.id));
 
-    return rows.map((row) =>
-      toPartnerListItemDto(row, counts.get(row.id) ?? 0, null, null),
-    );
+    return rows.map((row) => toPartnerListItemDto(row, counts.get(row.id) ?? 0, null, null));
   }
 
   async get(actor: PartnerActor, partnerId: string): Promise<DeliveryPartnerProfileDto> {
@@ -221,8 +229,10 @@ export class DeliveryPartnerService {
     if (dto.mobile !== undefined) data.mobile = dto.mobile;
     if (dto.dateOfBirth !== undefined) data.dateOfBirth = new Date(dto.dateOfBirth);
     if (dto.gender !== undefined) data.gender = dto.gender;
-    if (dto.emergencyContactName !== undefined) data.emergencyContactName = dto.emergencyContactName;
-    if (dto.emergencyContactPhone !== undefined) data.emergencyContactPhone = dto.emergencyContactPhone;
+    if (dto.emergencyContactName !== undefined)
+      data.emergencyContactName = dto.emergencyContactName;
+    if (dto.emergencyContactPhone !== undefined)
+      data.emergencyContactPhone = dto.emergencyContactPhone;
     if (dto.houseFlat !== undefined) data.houseFlat = dto.houseFlat;
     if (dto.streetArea !== undefined) data.streetArea = dto.streetArea;
     if (dto.city !== undefined) data.city = dto.city;
@@ -254,6 +264,7 @@ export class DeliveryPartnerService {
           kind: AuditKinds.PARTNER_STATUS_CHANGED,
           entityType: 'delivery_partner_profile',
           entityId: row.id,
+          branchId: profile.branchId,
           message: 'Partner profile updated',
         },
         tx,
@@ -271,7 +282,12 @@ export class DeliveryPartnerService {
     const db = this.prisma.requireClient();
     const profile = await this.requireProfile(db, actor, partnerId);
     if (dto.status === 'ACTIVE') {
-      const allowedFrom: DeliveryPartnerProfileDto['status'][] = ['ACTIVE', 'INACTIVE', 'VERIFIED', 'SUSPENDED'];
+      const allowedFrom: DeliveryPartnerProfileDto['status'][] = [
+        'ACTIVE',
+        'INACTIVE',
+        'VERIFIED',
+        'SUSPENDED',
+      ];
       if (!allowedFrom.includes(profile.status)) {
         throw new ConflictException('Partner must be verified before activation');
       }
@@ -306,6 +322,7 @@ export class DeliveryPartnerService {
           kind: AuditKinds.PARTNER_STATUS_CHANGED,
           entityType: 'delivery_partner_profile',
           entityId: row.id,
+          branchId: profile.branchId,
           message: `Partner status set to ${dto.status}`,
         },
         tx,
@@ -392,6 +409,7 @@ export class DeliveryPartnerService {
           kind: AuditKinds.PARTNER_VERIFIED,
           entityType: 'delivery_partner_profile',
           entityId: row.id,
+          branchId: profile.branchId,
           message: `Verification action: ${dto.action}`,
         },
         tx,
@@ -461,8 +479,18 @@ export class DeliveryPartnerService {
         where: { id: document.id },
         data:
           dto.action === 'APPROVE'
-            ? { status: 'VERIFIED', verificationNote: dto.note ?? null, verifiedAt: new Date(), verifiedById: actor.userId }
-            : { status: 'REJECTED', verificationNote: dto.note ?? null, verifiedAt: null, verifiedById: null },
+            ? {
+                status: 'VERIFIED',
+                verificationNote: dto.note ?? null,
+                verifiedAt: new Date(),
+                verifiedById: actor.userId,
+              }
+            : {
+                status: 'REJECTED',
+                verificationNote: dto.note ?? null,
+                verifiedAt: null,
+                verifiedById: null,
+              },
       });
       await this.audit.record(
         {
@@ -471,6 +499,7 @@ export class DeliveryPartnerService {
           kind: AuditKinds.DOCUMENT_REVIEWED,
           entityType: 'delivery_partner_document',
           entityId: document.id,
+          branchId: profile.branchId,
           message: `Document ${document.type} ${dto.action === 'APPROVE' ? 'approved' : 'rejected'}`,
         },
         tx,
@@ -487,7 +516,10 @@ export class DeliveryPartnerService {
   }
 
   /** Partners eligible to be assigned an order at a branch (used by the assign UI). */
-  async listCandidates(actor: PartnerActor, branchId?: string): Promise<DeliveryPartnerCandidateDto[]> {
+  async listCandidates(
+    actor: PartnerActor,
+    branchId?: string,
+  ): Promise<DeliveryPartnerCandidateDto[]> {
     const db = this.prisma.requireClient();
     const scopeBranchId = this.enforcedBranchId(actor) ?? branchId;
     if (!scopeBranchId) {
@@ -552,7 +584,10 @@ export class DeliveryPartnerService {
   ): Promise<PartnerProfileRow> {
     const enforcedBranchId = this.enforcedBranchId(actor);
     const profile = await client.deliveryPartnerProfile.findFirst({
-      where: { id: partnerId, ...(enforcedBranchId !== null ? { branchId: enforcedBranchId } : {}) },
+      where: {
+        id: partnerId,
+        ...(enforcedBranchId !== null ? { branchId: enforcedBranchId } : {}),
+      },
       include: partnerProfileInclude,
     });
     if (!profile) {
@@ -589,7 +624,9 @@ export class DeliveryPartnerService {
     return found !== null;
   }
 
-  private assertDocumentsSatisfy(documents: ReadonlyArray<{ type: DocumentType; status: string }>): void {
+  private assertDocumentsSatisfy(
+    documents: ReadonlyArray<{ type: DocumentType; status: string }>,
+  ): void {
     for (const required of REQUIRED_DOCUMENTS) {
       const doc = documents.find((document) => document.type === required);
       if (!doc || doc.status === 'REJECTED') {

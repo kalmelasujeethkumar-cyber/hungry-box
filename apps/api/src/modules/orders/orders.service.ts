@@ -77,9 +77,9 @@ export class OrdersService {
     const verification = await this.payments.requireFinalVerification(dto.paymentId, customerId);
     const provider = await this.paymentProviders.current();
 
-    let orderId: string;
+    let created: { id: string; branchId: string };
     try {
-      orderId = await db.$transaction(async (tx) => {
+      created = await db.$transaction(async (tx) => {
         const validated = await this.checkoutValidation.resolve(customerId, dto.addressId, tx);
         const preview = toCheckoutPreview(validated, provider.supportedMethods);
 
@@ -151,7 +151,7 @@ export class OrdersService {
         await tx.cart.deleteMany({
           where: { customerId, branchId: validated.branchId },
         });
-        return order.id;
+        return { id: order.id, branchId: validated.branchId };
       });
     } catch (error) {
       const concurrentReplay = await db.idempotencyKey.findUnique({
@@ -180,11 +180,12 @@ export class OrdersService {
       actorId: customerId,
       kind: AuditKinds.ORDER_CREATED,
       entityType: 'Order',
-      entityId: orderId,
+      entityId: created.id,
+      branchId: created.branchId,
       message: `Order placed (${verification.payment.amountMinor} minor units)`,
     });
 
-    return this.myOrder(customerId, orderId);
+    return this.myOrder(customerId, created.id);
   }
 
   async cancelMine(
@@ -196,7 +197,7 @@ export class OrdersService {
     await requireActiveUser(db, customerId);
     const order = await db.order.findFirst({
       where: { id: orderId, customerId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, branchId: true },
     });
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -232,6 +233,7 @@ export class OrdersService {
       kind: AuditKinds.ORDER_CANCELLED,
       entityType: 'Order',
       entityId: order.id,
+      branchId: order.branchId,
       message: `Order cancelled by customer${reason ? `: ${reason}` : ''}`,
     });
 

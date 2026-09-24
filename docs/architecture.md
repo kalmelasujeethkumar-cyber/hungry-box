@@ -459,34 +459,35 @@ Order-related kinds: `ORDER_CREATED`, `PAYMENT_INITIATED`, `PAYMENT_VERIFIED`,
   a stable legal/business record.
 - **2026-09 / ADR-016 Order state machine with per-status timestamps:** a strict forward
   graph (`PLACED `+' CONFIRMED `+' PREPARING `+' READY_FOR_PICKUP `+' OUT_FOR_DELIVERY `+' DELIVERED`)
-  plus explicit cancel windows, recorded as append-only `OrderEvent` rows and
-  `*At` timestamp columns that accommodate the Phase 5 delivery-assignment segment without
+plus explicit cancel windows, recorded as append-only `OrderEvent`rows and`*At` timestamp columns that accommodate the Phase 5 delivery-assignment segment without
   remodeling.
 - **2026-09 / ADR-020 Branch catalog edits stay branch-row-owned:** manager catalog
   PATCH/DELETE target a `BranchProduct` row scoped to the caller's branch; the service
   re-reads the row's `branchId` and 404s on mismatch (no client-supplied branch identity as
-  the authz source), preserving the global-product vs branch-product split. Phase 6 work.
-- **2026-09 / ADR-021 Audit needs a branch dimension:** Phase 6 branch-scoped reports/CSV
-  require `AuditEvent.branchId` (additive Prisma migration) so reads are provably scoped to
-  the manager's branch; audit stays write-append-only. Phase 6 work (DB migration required;
-  not verifiable in this headless session).
+  the authz source), preserving the global-product vs branch-product split. Delivered in
+  Phase 6.
+- **2026-09 / ADR-021 Audit needs a branch dimension:** branch-scoped reports/CSV require
+  audit events to carry a branch so reads are provably scoped to the manager's branch; audit
+  stays write-append-only. Implemented in Phase 6 — `AuditEvent.branchId` already existed in
+  the schema (no migration); the work was plumbing `branchId` through every mutation call
+  site, then adding branch-scoped read/CSV endpoints.
 
 ---
 
-## Phase 6 status (gap analysis — do not misread as complete)
+## Phase 6 status (complete)
 
-Phase 6 (Branch Manager Operations) is **not shipped**. This session produced an honest
-backend gap analysis only; the two genuinely-missing server surfaces — (1) branch-scoped
-catalog PATCH/DELETE and (2) branch-scoped audit **read**/reports/CSV (requires adding
-`branchId` to `AuditEvent`) — need a live Prisma migration + `generate` to be verified,
-which this headless session cannot run. They must not be claimed complete. No code for
-those surfaces was fabricated.
+Phase 6 (Branch Manager Operations) is **shipped and verified**. The two originally-missing
+server surfaces — (1) branch-scoped catalog PATCH/DELETE and (2) branch-scoped audit
+read/reports/CSV — are implemented, tested, and green (**API 266 passed / 2 skipped, Web 83
+passed**, typecheck/lint/build/format/`prisma validate` clean). No schema change was needed:
+`AuditEvent.branchId` already existed; the work plumbed `branchId` through all mutation
+write paths and added branch-scoped read/CSV endpoints.
 
-Reused as-is for the manager surface (do NOT rebuild): Phase 4 `branch-orders`, Phase 5
-delivery assignment/dispatch, partner management, notifications inbox + Socket.IO. Branch
-settings read only real config on `Branch`; no fake settings. Refunds/cancellations =
-integration points only where Phase 4 already supports them; no fake refunds. STOP before
-Phase 7 (Super Admin) is required.
+Reused (never rebuilt): Phase 4 `branch-orders`, Phase 5 delivery assignment/dispatch,
+partner management, notifications inbox + Socket.IO. Branch settings read and update only
+real config on `Branch`; no fake settings. Refunds/cancellations = integration points only
+where Phase 4 already supports them; no fake refunds. STOP before Phase 7 (Super Admin) is
+required.
 
-See `docs/phase-6-gap-analysis.md` for the full, machine-verifiable inventory.
-
+See `docs/phase-6-report.md` for the full delivery report, and
+`docs/phase-6-gap-analysis.md` for the original analysis plus corrections.

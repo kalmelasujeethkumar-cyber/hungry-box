@@ -44,3 +44,28 @@ export interface CatalogProductDetail {
   effectivePriceMinor: number;
   isAvailable: boolean;
 }
+
+export type BranchProductStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface BranchProductDto {
+  id: string;
+  productId: string;
+  priceMinor: number;
+  discountMinor: number;
+  effectivePriceMinor: number;
+  isAvailable: boolean;
+  status: BranchProductStatus;
+  product: {
+    name: string;
+    slug: string;
+    categoryName: string | null;
+    categorySlug: string | null;
+  };
+}
+
+export interface UpdateBranchProductInput {
+  priceMinor?: number;
+  discountMinor?: number;
+  isAvailable?: boolean;
+  status?: BranchProductStatus;
+}

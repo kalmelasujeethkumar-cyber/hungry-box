@@ -17,3 +17,8 @@ export interface BranchDto {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface UpdateBranchSettingsInput {
+  deliveryRadiusKm?: number;
+  address?: string;
+}

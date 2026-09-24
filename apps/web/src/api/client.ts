@@ -1,7 +1,11 @@
 import type {
   AddressDto,
   AssignOrderInput,
+  AuditListQuery,
+  AuditListResultDto,
   AuthUser,
+  BranchDto,
+  BranchProductDto,
   CancelOrderInput,
   CartSummary,
   CatalogCategory,
@@ -31,6 +35,8 @@ import type {
   ServiceabilityResult,
   SetDeliveryPartnerStatusInput,
   UpdateAddressInput,
+  UpdateBranchProductInput,
+  UpdateBranchSettingsInput,
   UpdateDeliveryLocationInput,
   UpdateDeliveryPartnerInput,
   UpsertPartnerDocumentInput,
@@ -92,6 +98,34 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   const text = await response.text();
   return (text ? (JSON.parse(text) as T) : undefined) as T;
+}
+
+export async function apiRequestText(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<string> {
+  const headers: Record<string, string> = { Accept: 'text/csv,*/*' };
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    throw new ApiError('Unable to reach the server', 0);
+  }
+
+  if (!response.ok) {
+    const { message, details } = await extractErrorPayload(response);
+    throw new ApiError(message, response.status, details);
+  }
+
+  return response.text();
 }
 
 async function extractErrorPayload(
@@ -278,10 +312,73 @@ export const branchOrdersApi = {
     apiRequest<OrderSummaryDto[]>(`/branch/orders${queryString(status ? { status } : {})}`, {
       token,
     }),
+  get: (orderId: string, token: string) =>
+    apiRequest<OrderDetailDto>(`/branch/orders/${orderId}`, { token }),
+  advanceStatus: (orderId: string, status: OrderStatus, token: string) =>
+    apiRequest<OrderDetailDto>(`/branch/orders/${orderId}/status`, {
+      method: 'POST',
+      body: { status },
+      token,
+    }),
+  cancel: (orderId: string, reason: string | undefined, token: string) =>
+    apiRequest<OrderDetailDto>(`/branch/orders/${orderId}/cancel`, {
+      method: 'POST',
+      body: { reason },
+      token,
+    }),
+};
+
+export const branchProductsApi = {
+  list: (branchId: string, token: string) =>
+    apiRequest<BranchProductDto[]>(`/branch-products?branchId=${branchId}`, { token }),
+  create: (
+    input: {
+      branchId: string;
+      productId: string;
+      priceMinor: number;
+      discountMinor?: number;
+      isAvailable?: boolean;
+    },
+    token: string,
+  ) => apiRequest<BranchProductDto>('/branch-products', { method: 'POST', body: input, token }),
+  update: (branchProductId: string, input: UpdateBranchProductInput, token: string) =>
+    apiRequest<BranchProductDto>(`/branch-products/${branchProductId}`, {
+      method: 'PATCH',
+      body: input,
+      token,
+    }),
+  deactivate: (branchProductId: string, token: string) =>
+    apiRequest<BranchProductDto>(`/branch-products/${branchProductId}`, {
+      method: 'DELETE',
+      token,
+    }),
+};
+
+export const branchSettingsApi = {
+  get: (token: string, branchId?: string | null) =>
+    apiRequest<BranchDto>(`/branch/settings${queryString(branchId ? { branchId } : {})}`, {
+      token,
+    }),
+  update: (input: UpdateBranchSettingsInput, token: string, branchId?: string | null) =>
+    apiRequest<BranchDto>(`/branch/settings${queryString(branchId ? { branchId } : {})}`, {
+      method: 'PATCH',
+      body: input,
+      token,
+    }),
+};
+
+export const branchAuditApi = {
+  list: (query: AuditListQuery, token: string) =>
+    apiRequest<AuditListResultDto>(`/branch/audit${queryString(query)}`, { token }),
+  exportCsv: (query: AuditListQuery, token: string) =>
+    apiRequestText(`/branch/audit/export${queryString(query)}`, { token }),
 };
 
 export const branchDeliveryApi = {
-  listPartners: (token: string, query?: { status?: string; availability?: string; search?: string }) =>
+  listPartners: (
+    token: string,
+    query?: { status?: string; availability?: string; search?: string },
+  ) =>
     apiRequest<DeliveryPartnerListItemDto[]>(`/branch/partners${queryString(query ?? {})}`, {
       token,
     }),
@@ -343,12 +440,20 @@ export const branchDeliveryApi = {
       body: input,
       token,
     }),
-  cancelAssignment: (orderId: string, assignmentId: string, reason: string | undefined, token: string) =>
-    apiRequest<DeliveryAssignmentDto>(`/branch/orders/${orderId}/assignments/${assignmentId}/cancel`, {
-      method: 'POST',
-      body: { reason },
-      token,
-    }),
+  cancelAssignment: (
+    orderId: string,
+    assignmentId: string,
+    reason: string | undefined,
+    token: string,
+  ) =>
+    apiRequest<DeliveryAssignmentDto>(
+      `/branch/orders/${orderId}/assignments/${assignmentId}/cancel`,
+      {
+        method: 'POST',
+        body: { reason },
+        token,
+      },
+    ),
 };
 
 export const deliveryTrackingApi = {
@@ -363,5 +468,6 @@ export const notificationsApi = {
       method: 'POST',
       token,
     }),
-  markAllRead: (token: string) => apiRequest<void>('/notifications/read-all', { method: 'POST', token }),
+  markAllRead: (token: string) =>
+    apiRequest<void>('/notifications/read-all', { method: 'POST', token }),
 };

@@ -18,20 +18,16 @@ One application, one authentication flow, role-based routing after login:
 | `CUSTOMER`         | Buyer experience (browse, cart, checkout, track, history)           |
 
 ## Project status
-**Phase 5 - delivery partners, assignment & live tracking (current).** Phase 4 - checkout,
-payments & orders (server-verified preview/conflict-detection, pluggable `dev` payment
-simulator behind `PAYMENT_PROVIDER`, transactional + idempotent order creation with
-immutable snapshots, order state machine + timeline/history/cancel, branch-scoped manager
-order ops, audit log, customer checkout/success/history/detail pages) - is complete, and
-Phases 1-3 (monorepo foundation + RBAC/catalog, name/catalog foundation; storefront, saved
-addresses, serviceability & cart; plus the delivery-partner & order foundations) remain
-green. Phase 5 keeps the single-application multi-branch architecture and adds the final
-mile: delivery-partner onboarding, document verification & online/offline availability,
-branch-scoped manager assignment (assign/cancel), partner accept/pickup/out-for-delivery/
-deliver driving the assignment state machine, live customer tracking (location + status via
-realtime + a server-verifiable REST endpoint), a notifications inbox, and the delivery-
-partner / manager dispatch / customer tracking frontends. Refunds/discounts, analytics &
-admin dashboards are Phase 6 (see Development phases).
+
+**Phase 6 - Branch Manager operations (current).** Phase 6 completes the branch manager's
+operations surface on top of the verified Phase 4/5 base: branch-scoped catalog edit &
+soft-hide, branch settings (delivery radius is branch configuration), a fully
+branch-scoped audit log (read + CSV export), a manager dashboard/order/catalog/settings/
+audit frontend, and branch-id plumbing through every audit write. Deliveries are
+dispatched and tracked (Phase 5), checkout/payments/orders are server-verified (Phase 4),
+and Phases 1-3 (monorepo foundation, RBAC/catalog, storefront/cart/serviceability) remain
+green. Phase 7 (Super Admin — global branch/product/payout administration, analytics) is
+**not** started; see Development phases.
 
 ## Technology stack
 
@@ -156,11 +152,11 @@ Added in Phase 3 (all Bearer JWT; `CUSTOMER` unless noted):
 | Endpoint                                                                                         | Access                 |
 | ------------------------------------------------------------------------------------------------ | ---------------------- |
 | `GET /api/catalog/products?branchId=[&categorySlug][&q]`                                         | Any authenticated user |
-| `GET /api/catalog/categories?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`                                                         | Any authenticated user |
-| `GET /api/catalog/products/:productId?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`                                                | Any authenticated user |
+| `GET /api/catalog/categories?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`                                           | Any authenticated user |
+| `GET /api/catalog/products/:productId?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`                                  | Any authenticated user |
 | `POST /api/locations/serviceability`                                                             | Any authenticated user |
 | `GET/POST /api/addresses`, `/api/addresses/:id` (GET/PATCH/DELETE), `/api/addresses/:id/default` | `CUSTOMER`             |
-| `GET /api/cart?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`, `DELETE /api/cart?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`                                        | `CUSTOMER`             |
+| `GET /api/cart?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`, `DELETE /api/cart?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`            | `CUSTOMER`             |
 | `POST /api/cart/items`, `PATCH/DELETE /api/cart/items/:id`                                       | `CUSTOMER`             |
 
 Serviceability is computed on the server (Haversine vs. `branch.deliveryRadiusKm`) and the
@@ -190,6 +186,23 @@ prices/availability changed), payments are verified server-side through the
 (`idempotencyKey`), and manager order operations are scoped to the caller's branch on the
 server.
 
+## Phase 6 endpoints (summary)
+
+Added in Phase 6 (all Bearer JWT; `SUPER_ADMIN`/`BRANCH_MANAGER`, own branch unless noted):
+
+| Endpoint                                       | Access                                        |
+| ---------------------------------------------- | --------------------------------------------- |
+| `PATCH /api/branch-products/:id`               | `SUPER_ADMIN` / `BRANCH_MANAGER` (own branch) |
+| `DELETE /api/branch-products/:id`              | `SUPER_ADMIN` / `BRANCH_MANAGER` (own branch) |
+| `GET`/`PATCH /api/branch/settings?branchId=`   | `SUPER_ADMIN` (any) / `BRANCH_MANAGER` (own)  |
+| `GET /api/branch/audit` (filters + pagination) | `SUPER_ADMIN` (all) / `BRANCH_MANAGER` (own)  |
+| `GET /api/branch/audit/export` (CSV)           | `SUPER_ADMIN` (all) / `BRANCH_MANAGER` (own)  |
+
+Catalog edits change only branch-varying fields (price, discount, availability, status) and
+soft-deactivate instead of deleting; every mutation is branch-owned server-side (404 on
+cross-branch) and audited with the branch id recorded. Delivery radius lives on
+`branch.deliveryRadiusKm` and is editable per branch — never a hard-coded constant.
+
 ## Development phases
 
 - **Phase 1:** Monorepo foundation, tooling (TS/eslint/prettier), shared contracts,
@@ -203,14 +216,20 @@ server.
   payment-provider abstraction (`dev` simulator), transactional idempotent order creation
   with immutable snapshots, order state machine + customer timeline/history/cancel,
   branch-scoped manager order operations, audit log.
-- **Phase 5 (current):** Delivery partners, assignment & live tracking - partner onboarding,
+- **Phase 5 (complete):** Delivery partners, assignment & live tracking - partner onboarding,
   document verification & online/offline availability, branch-scoped manager assignment
   (assign/cancel), partner accept/reject/pickup/out-for-delivery/deliver driving the
   `READY_FOR_PICKUP -> OUT_FOR_DELIVERY -> DELIVERED` order segment, live customer tracking
   (Socket.IO realtime + server-verifiable REST location/status endpoint), notifications
   inbox, and the delivery-partner (mobile-first) / manager dispatch / customer tracking
   frontends.
-- **Phase 6+:** Refunds/discounts, analytics & reports, admin/manager role dashboards.
+- **Phase 6 (complete):** Branch Manager operations - branch catalog edit/soft-hide and
+  settings (delivery radius), a branch-scoped audit log with filters + CSV export
+  (`AuditEvent.branchId` already in schema; branch id now plumbed through every audit
+  write), manager dashboard/orders/catalogue/settings/audit frontend, and full API + web
+  test coverage.
+- **Phase 7+:** Super Admin (global branches/products/users/payouts, analytics & charts),
+  refunds, promotions, and the remaining admin dashboards.
 
 Phases are developed one at a time; the platform is built in-order, not by skipping ahead.
 

@@ -1,13 +1,30 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { BranchDto } from '@hungrybox/shared';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { BranchDto, UserRole } from '@hungrybox/shared';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditKinds, AuditService } from '../audit/audit.service';
 import { toBranchDto } from './branch.mapper';
 import type { CreateBranchDto } from './dto/create-branch.dto';
+import type { UpdateBranchSettingsDto } from './dto/update-branch-settings.dto';
+
+export interface BranchSettingsActor {
+  role: UserRole;
+  branchId: string | null;
+  userId: string;
+}
 
 @Injectable()
 export class BranchesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async list(): Promise<BranchDto[]> {
     const db = this.prisma.requireClient();
@@ -49,5 +66,65 @@ export class BranchesService {
       }
       throw error;
     }
+  }
+
+  async getSettings(actor: BranchSettingsActor, branchIdQuery?: string): Promise<BranchDto> {
+    const branchId = this.resolveSettingsBranchId(actor, branchIdQuery);
+    return this.findById(branchId);
+  }
+
+  async updateSettings(
+    actor: BranchSettingsActor,
+    dto: UpdateBranchSettingsDto,
+    branchIdQuery?: string,
+  ): Promise<BranchDto> {
+    const db = this.prisma.requireClient();
+    const branchId = this.resolveSettingsBranchId(actor, branchIdQuery);
+    const branch = await db.branch.findUnique({
+      where: { id: branchId },
+      select: { id: true, name: true },
+    });
+    if (!branch) {
+      throw new NotFoundException('Branch not found');
+    }
+
+    const data: Prisma.BranchUpdateInput = {};
+    if (dto.deliveryRadiusKm !== undefined) {
+      data.deliveryRadiusKm = dto.deliveryRadiusKm;
+    }
+    if (dto.address !== undefined) {
+      data.address = dto.address;
+    }
+
+    const updated = await db.branch.update({ where: { id: branchId }, data });
+
+    await this.audit.record({
+      actorRole: actor.role,
+      actorId: actor.userId,
+      kind: AuditKinds.BRANCH_SETTINGS_UPDATED,
+      entityType: 'branch',
+      entityId: branchId,
+      branchId,
+      message: `Branch settings updated for ${branch.name}`,
+    });
+
+    return toBranchDto(updated);
+  }
+
+  /**
+   * BRANCH_MANAGER is always pinned to their own branch; a client-supplied
+   * branchId is only honoured for SUPER_ADMIN.
+   */
+  private resolveSettingsBranchId(actor: BranchSettingsActor, branchIdQuery?: string): string {
+    if (actor.role === 'BRANCH_MANAGER') {
+      if (!actor.branchId) {
+        throw new ForbiddenException('Branch manager has no assigned branch');
+      }
+      return actor.branchId;
+    }
+    if (!branchIdQuery) {
+      throw new BadRequestException('branchId is required for super-admin settings access');
+    }
+    return branchIdQuery;
   }
 }

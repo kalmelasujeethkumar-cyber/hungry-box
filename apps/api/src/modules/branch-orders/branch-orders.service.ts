@@ -120,6 +120,7 @@ export class BranchOrdersService {
       kind: AuditKinds.ORDER_STATUS_CHANGED,
       entityType: 'Order',
       entityId: order.id,
+      branchId: order.branchId,
       message: `Order status changed ${order.status} -> ${dto.status}`,
     });
 
@@ -171,6 +172,7 @@ export class BranchOrdersService {
       kind: AuditKinds.ORDER_CANCELLED,
       entityType: 'Order',
       entityId: order.id,
+      branchId: order.branchId,
       message: `Order cancelled by ${actor.role}${reason ? `: ${reason}` : ''}`,
     });
 
