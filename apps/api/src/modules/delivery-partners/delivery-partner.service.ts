@@ -161,6 +161,8 @@ export class DeliveryPartnerService {
 
     if (enforcedBranchId !== null) {
       where.branchId = enforcedBranchId;
+    } else if (query.branchId) {
+      where.branchId = query.branchId;
     } else if (query.search) {
       where.OR = [
         { fullName: { contains: query.search, mode: 'insensitive' } },

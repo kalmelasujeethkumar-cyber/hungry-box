@@ -69,3 +69,74 @@ export interface UpdateBranchProductInput {
   isAvailable?: boolean;
   status?: BranchProductStatus;
 }
+
+export type CatalogStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface GlobalProductListItemDto {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  status: CatalogStatus;
+  imageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GlobalProductDetailDto extends GlobalProductListItemDto {
+  images: ProductImageDto[];
+}
+
+export interface UpdateProductInput {
+  name?: string;
+  slug?: string;
+  description?: string | null;
+  categoryId?: string | null;
+  status?: CatalogStatus;
+}
+
+export interface SetProductStatusInput {
+  status: CatalogStatus;
+}
+
+export interface CreateProductImageInput {
+  imageUrl: string;
+  altText?: string;
+  sortOrder?: number;
+  isPrimary?: boolean;
+}
+
+export interface UpdateProductImageInput {
+  altText?: string;
+  sortOrder?: number;
+  isPrimary?: boolean;
+}
+
+export interface CategoryDto {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  imageUrl: string | null;
+  status: CatalogStatus;
+  sortOrder: number;
+}
+
+export interface CreateCategoryInput {
+  name: string;
+  slug?: string;
+  description?: string;
+  imageUrl?: string;
+  sortOrder?: number;
+}
+
+export interface UpdateCategoryInput {
+  name?: string;
+  slug?: string;
+  description?: string;
+  imageUrl?: string;
+  sortOrder?: number;
+  status?: CatalogStatus;
+}

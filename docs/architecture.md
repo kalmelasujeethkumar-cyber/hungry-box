@@ -471,6 +471,29 @@ plus explicit cancel windows, recorded as append-only `OrderEvent`rows and`*At` 
   stays write-append-only. Implemented in Phase 6 — `AuditEvent.branchId` already existed in
   the schema (no migration); the work was plumbing `branchId` through every mutation call
   site, then adding branch-scoped read/CSV endpoints.
+- **2026-09 / ADR-022 Branch lifecycle is server-state, not UI state:** a branch moves
+  through `ACTIVE`, `PAUSED`, `INACTIVE` via a SUPER_ADMIN-only
+  `PATCH /branches/:id/status`; the server validates the request (404 on missing branch,
+  400 on a no-op same-status change) and each transition is audited, while the UI only
+  offers the legal next states for the current state. Delivered in Phase 7.
+- **2026-09 / ADR-023 One-time manager passwords:** manager creation binds a branch id and
+  generates a random temporary password returned in the create response exactly once; it is
+  stored only as a hash and is never re-servable or exposed through any other API (no
+  password-reset surface in this phase).
+- **2026-09 / ADR-024 Suspension is enforced per-request, server-side:** `RolesGuard`
+  re-reads the acting user (bypassing the JWT's stale claim) and 403s `SUSPENDED`/`INACTIVE`
+  users on every protected request, so revocation takes effect immediately and is never a
+  client concern.
+- **2026-09 / ADR-025 Global catalog stays global:** SUPER_ADMIN product/category
+  management (CRUD + images + soft status) lives entirely on the global entities; the
+  branch-product pricing/availability/status layer is untouched, preserving ADR-020.
+- **2026-09 / ADR-026 Read-only analytics:** the admin dashboard/reports aggregate existing
+  order, payment, partner and branch data on demand (integer minor units; no float money);
+  there are no aggregation tables and no write paths, and CSV reports are generated from the
+  same query layer.
+- **2026-09 / ADR-027 Refund reporting only in Phase 7:** cancellations/refund summaries are
+  derived from `Payment.status`; there is deliberately **no refund action workflow** — a
+  refund action needs a schema change and is deferred to a later phase.
 
 ---
 
@@ -486,8 +509,22 @@ write paths and added branch-scoped read/CSV endpoints.
 Reused (never rebuilt): Phase 4 `branch-orders`, Phase 5 delivery assignment/dispatch,
 partner management, notifications inbox + Socket.IO. Branch settings read and update only
 real config on `Branch`; no fake settings. Refunds/cancellations = integration points only
-where Phase 4 already supports them; no fake refunds. STOP before Phase 7 (Super Admin) is
-required.
+where Phase 4 already supports them; no fake refunds.
 
-See `docs/phase-6-report.md` for the full delivery report, and
-`docs/phase-6-gap-analysis.md` for the original analysis plus corrections.
+## Phase 7 status (complete)
+
+Phase 7 (Super Admin Operations) is **shipped and verified**: global branch lifecycle
+management, branch manager administration with one-time passwords, per-request suspension
+enforcement in `RolesGuard`, a global (branch-aware) catalog with images, cross-branch
+order/delivery/audit visibility, and a read-only analytics + CSV reports layer — plus the
+admin frontend (`pages/admin/*`, eight flat SUPER_ADMIN routes under `AdminLayout`) and
+tests. Verified green: **API 298 passed / 2 skipped, Web 95 passed**, typecheck, lint, and
+full build.
+
+Phase 7 is **migration-free**: no `schema.prisma` change, no migration, no `db push`, no
+reseed. Everything reused the existing data model (`AuditEvent`/`ProductImage`/status
+columns already existed); refund/analytics reporting reads `Payment.status` only — the
+refund **action** workflow is deliberately out of scope until a future schema change.
+Recharts was added to `apps/web` only. Nothing was committed in Phase 7 (baseline
+`4c59b88`); see `docs/phase-7-report.md` for the 38-point delivery report and ADRs 22–27
+above for the decisions.

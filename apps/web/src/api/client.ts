@@ -1,5 +1,7 @@
 import type {
   AddressDto,
+  AdminDashboardQuery,
+  AdminReportQuery,
   AssignOrderInput,
   AuditListQuery,
   AuditListResultDto,
@@ -11,12 +13,18 @@ import type {
   CatalogCategory,
   CatalogProduct,
   CatalogProductDetail,
+  CategoryDto,
   CheckoutPreviewDto,
   CreateAddressInput,
+  CreateCategoryInput,
   CreateDeliveryPartnerInput,
   CreateDeliveryPartnerResultDto,
+  CreateManagerInput,
+  CreateManagerResultDto,
   CreateOrderInput,
   CreatePaymentIntentInput,
+  CreateProductImageInput,
+  DashboardSummaryDto,
   DeliveryAssignmentDto,
   DeliveryAssignmentListItemDto,
   DeliveryAssignmentStatus,
@@ -25,6 +33,8 @@ import type {
   DeliveryPartnerProfileDto,
   DeliveryTrackingDto,
   DevPaymentSimulateInput,
+  GlobalProductDetailDto,
+  GlobalProductListItemDto,
   LoginResponse,
   NotificationDto,
   OrderDetailDto,
@@ -33,13 +43,22 @@ import type {
   PaymentIntentDto,
   ReviewPartnerDocumentInput,
   ServiceabilityResult,
+  SetBranchStatusInput,
   SetDeliveryPartnerStatusInput,
+  SetProductStatusInput,
+  SetUserStatusInput,
   UpdateAddressInput,
+  UpdateBranchInput,
   UpdateBranchProductInput,
   UpdateBranchSettingsInput,
+  UpdateCategoryInput,
   UpdateDeliveryLocationInput,
   UpdateDeliveryPartnerInput,
+  UpdateProductImageInput,
+  UpdateProductInput,
   UpsertPartnerDocumentInput,
+  UserListQuery,
+  UserListResultDto,
   VerifyDeliveryPartnerInput,
   VerifyPaymentInput,
   VerifyPaymentResultDto,
@@ -312,6 +331,10 @@ export const branchOrdersApi = {
     apiRequest<OrderSummaryDto[]>(`/branch/orders${queryString(status ? { status } : {})}`, {
       token,
     }),
+  listGlobal: (
+    token: string,
+    query: { branchId?: string; status?: OrderStatus; from?: string; to?: string },
+  ) => apiRequest<OrderSummaryDto[]>(`/branch/orders${queryString(query)}`, { token }),
   get: (orderId: string, token: string) =>
     apiRequest<OrderDetailDto>(`/branch/orders/${orderId}`, { token }),
   advanceStatus: (orderId: string, status: OrderStatus, token: string) =>
@@ -377,7 +400,7 @@ export const branchAuditApi = {
 export const branchDeliveryApi = {
   listPartners: (
     token: string,
-    query?: { status?: string; availability?: string; search?: string },
+    query?: { status?: string; availability?: string; search?: string; branchId?: string },
   ) =>
     apiRequest<DeliveryPartnerListItemDto[]>(`/branch/partners${queryString(query ?? {})}`, {
       token,
@@ -470,4 +493,85 @@ export const notificationsApi = {
     }),
   markAllRead: (token: string) =>
     apiRequest<void>('/notifications/read-all', { method: 'POST', token }),
+};
+
+export const branchesApi = {
+  list: (token: string) => apiRequest<BranchDto[]>('/branches', { token }),
+  get: (id: string, token: string) => apiRequest<BranchDto>(`/branches/${id}`, { token }),
+  update: (id: string, input: UpdateBranchInput, token: string) =>
+    apiRequest<BranchDto>(`/branches/${id}`, { method: 'PATCH', body: input, token }),
+  setStatus: (id: string, input: SetBranchStatusInput, token: string) =>
+    apiRequest<BranchDto>(`/branches/${id}/status`, { method: 'PATCH', body: input, token }),
+};
+
+export const usersApi = {
+  list: (query: UserListQuery, token: string) =>
+    apiRequest<UserListResultDto>(`/users${queryString(query)}`, { token }),
+  createManager: (input: CreateManagerInput, token: string) =>
+    apiRequest<CreateManagerResultDto>('/users/managers', {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+  setStatus: (id: string, input: SetUserStatusInput, token: string) =>
+    apiRequest<UserListResultDto['items'][number]>(`/users/${id}/status`, {
+      method: 'PATCH',
+      body: input,
+      token,
+    }),
+};
+
+export const productsApi = {
+  listAdmin: (token: string) =>
+    apiRequest<GlobalProductListItemDto[]>('/products/admin', { token }),
+  getAdmin: (id: string, token: string) =>
+    apiRequest<GlobalProductDetailDto>(`/products/admin/${id}`, { token }),
+  create: (
+    input: { name: string; slug: string; description?: string; categoryId?: string },
+    token: string,
+  ) => apiRequest<GlobalProductDetailDto>('/products', { method: 'POST', body: input, token }),
+  update: (id: string, input: UpdateProductInput, token: string) =>
+    apiRequest<GlobalProductDetailDto>(`/products/${id}`, {
+      method: 'PATCH',
+      body: input,
+      token,
+    }),
+  setStatus: (id: string, input: SetProductStatusInput, token: string) =>
+    apiRequest<GlobalProductDetailDto>(`/products/${id}/status`, {
+      method: 'PATCH',
+      body: input,
+      token,
+    }),
+  addImage: (id: string, input: CreateProductImageInput, token: string) =>
+    apiRequest<GlobalProductDetailDto>(`/products/${id}/images`, {
+      method: 'POST',
+      body: input,
+      token,
+    }),
+  updateImage: (imageId: string, input: UpdateProductImageInput, token: string) =>
+    apiRequest<GlobalProductDetailDto>(`/products/images/${imageId}`, {
+      method: 'PATCH',
+      body: input,
+      token,
+    }),
+  removeImage: (imageId: string, token: string) =>
+    apiRequest<GlobalProductDetailDto>(`/products/images/${imageId}`, {
+      method: 'DELETE',
+      token,
+    }),
+};
+
+export const categoriesApi = {
+  listAdmin: (token: string) => apiRequest<CategoryDto[]>('/categories/admin', { token }),
+  create: (input: CreateCategoryInput, token: string) =>
+    apiRequest<CategoryDto>('/categories', { method: 'POST', body: input, token }),
+  update: (id: string, input: UpdateCategoryInput, token: string) =>
+    apiRequest<CategoryDto>(`/categories/${id}`, { method: 'PATCH', body: input, token }),
+};
+
+export const adminApi = {
+  dashboard: (query: AdminDashboardQuery, token: string) =>
+    apiRequest<DashboardSummaryDto>(`/admin/dashboard${queryString(query)}`, { token }),
+  ordersReportCsv: (query: AdminReportQuery, token: string) =>
+    apiRequestText(`/admin/reports/orders${queryString(query)}`, { token }),
 };

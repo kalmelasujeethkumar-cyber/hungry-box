@@ -22,3 +22,18 @@ export interface UpdateBranchSettingsInput {
   deliveryRadiusKm?: number;
   address?: string;
 }
+
+export interface UpdateBranchInput {
+  name?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  deliveryRadiusKm?: number;
+}
+
+export interface SetBranchStatusInput {
+  status: BranchStatus;
+}

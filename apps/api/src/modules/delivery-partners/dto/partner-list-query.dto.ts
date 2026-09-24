@@ -1,9 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
-import type {
-  DeliveryAvailability,
-  DeliveryPartnerStatus,
-} from '@hungrybox/shared';
+import type { DeliveryAvailability, DeliveryPartnerStatus } from '@hungrybox/shared';
 
 export class PartnerListQueryDto {
   @IsOptional()
@@ -39,4 +36,10 @@ export class PartnerListQueryDto {
   @IsString()
   @MaxLength(120)
   search?: string;
+
+  /** Honoured only for SUPER_ADMIN; BRANCH_MANAGER is always pinned to their own branch. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  branchId?: string;
 }

@@ -1,0 +1,146 @@
+import type { JSX } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type {
+  BranchDto,
+  DeliveryPartnerListItemDto,
+  DeliveryPartnerStatus,
+} from '@hungrybox/shared';
+import { branchesApi, branchDeliveryApi } from '../../api/client';
+import { useAuth } from '../../auth/auth-context';
+import EmptyState from '../../features/storefront/components/EmptyState';
+import { UserIcon } from '../../features/storefront/components/icons';
+import {
+  AVAILABILITY_LABELS,
+  PARTNER_STATUS_LABELS,
+} from '../../features/delivery/delivery-status';
+import AdminLayout from './AdminLayout';
+
+const STATUS_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  { value: 'PENDING_VERIFICATION', label: 'Pending' },
+  { value: 'DOCUMENT_REVIEW', label: 'In review' },
+  { value: 'VERIFIED', label: 'Verified' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'INACTIVE', label: 'Inactive' },
+  { value: 'SUSPENDED', label: 'Suspended' },
+  { value: 'REJECTED', label: 'Rejected' },
+] as const;
+
+export default function AdminPartnersPage(): JSX.Element {
+  const { token } = useAuth();
+  const [partners, setPartners] = useState<DeliveryPartnerListItemDto[]>([]);
+  const [branches, setBranches] = useState<BranchDto[]>([]);
+  const [branchId, setBranchId] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<DeliveryPartnerStatus | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    branchDeliveryApi
+      .listPartners(token, {
+        branchId: branchId || undefined,
+        status: statusFilter,
+        search: search.trim() || undefined,
+      })
+      .then(setPartners)
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : 'Could not load partners.'),
+      )
+      .finally(() => setLoading(false));
+  }, [token, branchId, statusFilter, search]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!token) return;
+    branchesApi
+      .list(token)
+      .then(setBranches)
+      .catch(() => undefined);
+  }, [token]);
+
+  return (
+    <AdminLayout kicker="Global operations" title="Delivery partners">
+      <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search by name or partner ID"
+          aria-label="Search partners"
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-brand-teal focus:outline-none lg:w-72"
+        />
+        <select
+          value={branchId}
+          onChange={(event) => setBranchId(event.target.value)}
+          aria-label="Filter by branch"
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-brand-teal focus:outline-none"
+        >
+          <option value="">All branches</option>
+          {branches.map((branch) => (
+            <option key={branch.id} value={branch.id}>
+              {branch.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={statusFilter ?? ''}
+          onChange={(event) =>
+            setStatusFilter((event.target.value as DeliveryPartnerStatus) || undefined)
+          }
+          aria-label="Filter by status"
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-brand-teal focus:outline-none"
+        >
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.label} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
+
+      {loading ? (
+        <p className="mt-6 text-sm text-slate-500">Loading partners…</p>
+      ) : partners.length === 0 ? (
+        <div className="mt-8">
+          <EmptyState
+            icon={<UserIcon className="h-8 w-8" />}
+            title="No partners found"
+            message="Delivery partners across all branches will appear here."
+          />
+        </div>
+      ) : (
+        <ul className="mt-5 space-y-3">
+          {partners.map((partner) => (
+            <li
+              key={partner.id}
+              className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-bold text-brand-navy">{partner.fullName}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {partner.partnerId} · {partner.branch.name} ({partner.branch.city})
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy">
+                  {AVAILABILITY_LABELS[partner.availability]}
+                </span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                  {PARTNER_STATUS_LABELS[partner.status]}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </AdminLayout>
+  );
+}

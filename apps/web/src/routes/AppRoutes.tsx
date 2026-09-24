@@ -4,7 +4,14 @@ import CustomerLayout from '../layouts/CustomerLayout';
 import HomePage from '../pages/HomePage';
 import LoginPage from '../pages/LoginPage';
 import NotFoundPage from '../pages/NotFoundPage';
-import AdminHomePage from '../pages/admin/AdminHomePage';
+import AdminAuditPage from '../pages/admin/AdminAuditPage';
+import AdminBranchesPage from '../pages/admin/AdminBranchesPage';
+import AdminCataloguePage from '../pages/admin/AdminCataloguePage';
+import AdminManagersPage from '../pages/admin/AdminManagersPage';
+import AdminOrdersPage from '../pages/admin/AdminOrdersPage';
+import AdminOverviewPage from '../pages/admin/AdminOverviewPage';
+import AdminPartnersPage from '../pages/admin/AdminPartnersPage';
+import AdminReportsPage from '../pages/admin/AdminReportsPage';
 import AddressesPage from '../pages/customer/AddressesPage';
 import CartPage from '../pages/customer/CartPage';
 import CheckoutPage from '../pages/customer/CheckoutPage';
@@ -42,7 +49,77 @@ export const appRouter = createBrowserRouter([
     element: (
       <RequireAuth>
         <RequireRole roles={['SUPER_ADMIN']}>
-          <AdminHomePage />
+          <AdminOverviewPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/admin/branches',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['SUPER_ADMIN']}>
+          <AdminBranchesPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/admin/orders',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['SUPER_ADMIN']}>
+          <AdminOrdersPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/admin/catalogue',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['SUPER_ADMIN']}>
+          <AdminCataloguePage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/admin/managers',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['SUPER_ADMIN']}>
+          <AdminManagersPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/admin/partners',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['SUPER_ADMIN']}>
+          <AdminPartnersPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/admin/audit',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['SUPER_ADMIN']}>
+          <AdminAuditPage />
+        </RequireRole>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/admin/reports',
+    element: (
+      <RequireAuth>
+        <RequireRole roles={['SUPER_ADMIN']}>
+          <AdminReportsPage />
         </RequireRole>
       </RequireAuth>
     ),

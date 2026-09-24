@@ -11,6 +11,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditKinds, AuditService } from '../audit/audit.service';
 import { toBranchDto } from './branch.mapper';
 import type { CreateBranchDto } from './dto/create-branch.dto';
+import type { SetBranchStatusDto } from './dto/set-branch-status.dto';
+import type { UpdateBranchDto } from './dto/update-branch.dto';
 import type { UpdateBranchSettingsDto } from './dto/update-branch-settings.dto';
 
 export interface BranchSettingsActor {
@@ -66,6 +68,73 @@ export class BranchesService {
       }
       throw error;
     }
+  }
+
+  async update(actor: BranchSettingsActor, id: string, dto: UpdateBranchDto): Promise<BranchDto> {
+    const db = this.prisma.requireClient();
+    const branch = await db.branch.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    });
+    if (!branch) {
+      throw new NotFoundException('Branch not found');
+    }
+
+    const data: Prisma.BranchUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.city !== undefined) data.city = dto.city;
+    if (dto.state !== undefined) data.state = dto.state;
+    if (dto.country !== undefined) data.country = dto.country;
+    if (dto.address !== undefined) data.address = dto.address;
+    if (dto.latitude !== undefined) data.latitude = dto.latitude;
+    if (dto.longitude !== undefined) data.longitude = dto.longitude;
+    if (dto.deliveryRadiusKm !== undefined) data.deliveryRadiusKm = dto.deliveryRadiusKm;
+
+    const updated = await db.branch.update({ where: { id }, data });
+
+    await this.audit.record({
+      actorRole: actor.role,
+      actorId: actor.userId,
+      kind: AuditKinds.BRANCH_UPDATED,
+      entityType: 'branch',
+      entityId: id,
+      branchId: id,
+      message: `Branch ${branch.name} details updated`,
+    });
+
+    return toBranchDto(updated);
+  }
+
+  async setStatus(
+    actor: BranchSettingsActor,
+    id: string,
+    dto: SetBranchStatusDto,
+  ): Promise<BranchDto> {
+    const db = this.prisma.requireClient();
+    const branch = await db.branch.findUnique({
+      where: { id },
+      select: { id: true, name: true, status: true },
+    });
+    if (!branch) {
+      throw new NotFoundException('Branch not found');
+    }
+    if (branch.status === dto.status) {
+      throw new BadRequestException(`Branch is already ${dto.status.toLowerCase()}`);
+    }
+
+    const updated = await db.branch.update({ where: { id }, data: { status: dto.status } });
+
+    await this.audit.record({
+      actorRole: actor.role,
+      actorId: actor.userId,
+      kind: AuditKinds.BRANCH_STATUS_CHANGED,
+      entityType: 'branch',
+      entityId: id,
+      branchId: id,
+      message: `Branch ${branch.name} status changed to ${dto.status}`,
+    });
+
+    return toBranchDto(updated);
   }
 
   async getSettings(actor: BranchSettingsActor, branchIdQuery?: string): Promise<BranchDto> {

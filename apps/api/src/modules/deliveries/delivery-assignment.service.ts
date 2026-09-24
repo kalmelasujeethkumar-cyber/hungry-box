@@ -224,6 +224,8 @@ export class DeliveryAssignmentService {
     const where: Prisma.DeliveryAssignmentWhereInput = {};
     if (enforcedBranchId !== null) {
       where.branchId = enforcedBranchId;
+    } else if (query.branchId) {
+      where.branchId = query.branchId;
     }
     if (query.status) {
       where.status = query.status;

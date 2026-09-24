@@ -45,7 +45,10 @@ function assignmentDetail(status = 'ASSIGNED') {
     assignedAt: new Date(),
     acceptedAt: status === 'ASSIGNED' ? null : new Date(),
     rejectedAt: null,
-    pickedUpAt: status === 'PICKED_UP' || status === 'OUT_FOR_DELIVERY' || status === 'DELIVERED' ? new Date() : null,
+    pickedUpAt:
+      status === 'PICKED_UP' || status === 'OUT_FOR_DELIVERY' || status === 'DELIVERED'
+        ? new Date()
+        : null,
     outForDeliveryAt: status === 'OUT_FOR_DELIVERY' || status === 'DELIVERED' ? new Date() : null,
     deliveredAt: status === 'DELIVERED' ? new Date() : null,
     cancelledAt: null,
@@ -86,7 +89,9 @@ function baseDb() {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     deliveryPartnerProfile: {
-      findUnique: vi.fn().mockResolvedValue({ id: 'p1', branchId: 'b1', status: 'ACTIVE', availability: 'ONLINE' }),
+      findUnique: vi
+        .fn()
+        .mockResolvedValue({ id: 'p1', branchId: 'b1', status: 'ACTIVE', availability: 'ONLINE' }),
       findFirst: vi.fn().mockResolvedValue({ id: 'p1', branchId: 'b1' }),
       update: vi.fn().mockResolvedValue({}),
     },
@@ -115,7 +120,9 @@ function buildService<T extends Record<string, unknown> = ReturnType<typeof base
     hasActiveDelivery: vi.fn().mockResolvedValue(false),
   } as unknown as DeliveryPartnerService;
   const events = { announce: vi.fn() } as unknown as DeliveryEventsService;
-  const notifications = { notify: vi.fn().mockResolvedValue({}) } as unknown as NotificationsService;
+  const notifications = {
+    notify: vi.fn().mockResolvedValue({}),
+  } as unknown as NotificationsService;
   const service = new DeliveryAssignmentService(
     prisma,
     orderState,
@@ -150,7 +157,10 @@ describe('DeliveryAssignmentService.assign', () => {
     });
     db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('ASSIGNED'));
 
-    const result = await service.assign(superAdmin, 'o1', { deliveryPartnerId: 'p1', notes: 'Ring the bell' });
+    const result = await service.assign(superAdmin, 'o1', {
+      deliveryPartnerId: 'p1',
+      notes: 'Ring the bell',
+    });
 
     expect(db.deliveryAssignment.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -230,9 +240,9 @@ describe('DeliveryAssignmentService.assign', () => {
     await expect(service.assign(superAdmin, 'o1', { deliveryPartnerId: 'p1' })).rejects.toThrow(
       DeliveryConflictException,
     );
-    expect((await service.assign(superAdmin, 'o1', { deliveryPartnerId: 'p1' }).catch((e) => e.code))).toBe(
-      'delivery.already_assigned',
-    );
+    expect(
+      await service.assign(superAdmin, 'o1', { deliveryPartnerId: 'p1' }).catch((e) => e.code),
+    ).toBe('delivery.already_assigned');
   });
 
   it('rejects assigning to an offline partner', async () => {
@@ -349,6 +359,17 @@ describe('DeliveryAssignmentService.list', () => {
       expect.objectContaining({ where: expect.objectContaining({ status: 'PICKED_UP' }) }),
     );
   });
+
+  it('lets a super admin scope the list to a chosen branch', async () => {
+    const { service, db } = buildService();
+    db.deliveryAssignment.findMany.mockResolvedValue([]);
+
+    await service.list(superAdmin, { branchId: 'b2' });
+
+    expect(db.deliveryAssignment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ branchId: 'b2' }) }),
+    );
+  });
 });
 
 describe('DeliveryAssignmentService.accept / reject', () => {
@@ -424,7 +445,11 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
   it('picks up an accepted assignment and advances the order to OUT_FOR_DELIVERY', async () => {
     const { service, db, audit, events } = buildService();
     db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
-    db.deliveryAssignment.findFirst.mockResolvedValue({ id: 'a1', status: 'ACCEPTED', orderId: 'o1' });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'ACCEPTED',
+      orderId: 'o1',
+    });
     db.order.findUnique.mockResolvedValue({ id: 'o1', status: 'READY_FOR_PICKUP' });
     db.deliveryAssignment.update.mockResolvedValue({});
     db.order.update.mockResolvedValue({});
@@ -456,7 +481,11 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
   it('rejects pickup when the assignment is not accepted', async () => {
     const { service, db } = buildService();
     db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
-    db.deliveryAssignment.findFirst.mockResolvedValue({ id: 'a1', status: 'ASSIGNED', orderId: 'o1' });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'ASSIGNED',
+      orderId: 'o1',
+    });
 
     await expect(service.pickup('u1', 'a1')).rejects.toThrow(DeliveryConflictException);
   });
@@ -524,7 +553,11 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
   it('rejects delivery when the assignment is not out for delivery', async () => {
     const { service, db } = buildService();
     db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
-    db.deliveryAssignment.findFirst.mockResolvedValue({ id: 'a1', status: 'ACCEPTED', orderId: 'o1' });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'ACCEPTED',
+      orderId: 'o1',
+    });
 
     await expect(service.deliver('u1', 'a1')).rejects.toThrow(DeliveryConflictException);
   });

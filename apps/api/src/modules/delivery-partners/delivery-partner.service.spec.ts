@@ -61,10 +61,38 @@ function partnerSource(status = 'PENDING_VERIFICATION', availability = 'OFFLINE'
 
 function verifiedDocuments() {
   return [
-    { id: 'd1', type: 'AADHAAR', documentReference: 'aadhaar-ref', status: 'VERIFIED', verificationNote: null, verifiedAt: new Date() },
-    { id: 'd2', type: 'ADDRESS_PROOF', documentReference: 'addr-ref', status: 'VERIFIED', verificationNote: null, verifiedAt: new Date() },
-    { id: 'd3', type: 'PAN', documentReference: 'pan-ref', status: 'VERIFIED', verificationNote: null, verifiedAt: new Date() },
-    { id: 'd4', type: 'DRIVING_LICENSE', documentReference: 'dl-ref', status: 'VERIFIED', verificationNote: null, verifiedAt: new Date() },
+    {
+      id: 'd1',
+      type: 'AADHAAR',
+      documentReference: 'aadhaar-ref',
+      status: 'VERIFIED',
+      verificationNote: null,
+      verifiedAt: new Date(),
+    },
+    {
+      id: 'd2',
+      type: 'ADDRESS_PROOF',
+      documentReference: 'addr-ref',
+      status: 'VERIFIED',
+      verificationNote: null,
+      verifiedAt: new Date(),
+    },
+    {
+      id: 'd3',
+      type: 'PAN',
+      documentReference: 'pan-ref',
+      status: 'VERIFIED',
+      verificationNote: null,
+      verifiedAt: new Date(),
+    },
+    {
+      id: 'd4',
+      type: 'DRIVING_LICENSE',
+      documentReference: 'dl-ref',
+      status: 'VERIFIED',
+      verificationNote: null,
+      verifiedAt: new Date(),
+    },
   ];
 }
 
@@ -75,9 +103,11 @@ function baseDb() {
       create: vi.fn().mockResolvedValue({ id: 'u1' }),
     },
     branch: {
-      findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) =>
-        where.id === 'b1' ? BRANCH : null,
-      ),
+      findUnique: vi
+        .fn()
+        .mockImplementation(async ({ where }: { where: { id: string } }) =>
+          where.id === 'b1' ? BRANCH : null,
+        ),
     },
     deliveryPartnerProfile: {
       findUnique: vi.fn().mockResolvedValue(partnerSource()),
@@ -110,7 +140,9 @@ function buildService<T extends Record<string, unknown> = ReturnType<typeof base
   const prisma = {
     requireClient: vi.fn().mockReturnValue(db),
   } as unknown as PrismaService;
-  const partnerId = { next: vi.fn().mockResolvedValue('HB-DP-000042') } as unknown as PartnerIdService;
+  const partnerId = {
+    next: vi.fn().mockResolvedValue('HB-DP-000042'),
+  } as unknown as PartnerIdService;
   const audit = { record: vi.fn().mockResolvedValue(undefined) } as unknown as AuditService;
   const service = new DeliveryPartnerService(prisma, partnerId, audit);
   return { service, db, partnerId, audit, prisma };
@@ -129,7 +161,11 @@ describe('DeliveryPartnerService.create', () => {
     };
     db.deliveryPartnerProfile.findFirstOrThrow.mockResolvedValue(created);
 
-    const result = await service.create(superAdmin, { fullName: 'Shiva Kumar', loginId: 'shiva@', branchId: 'b1' });
+    const result = await service.create(superAdmin, {
+      fullName: 'Shiva Kumar',
+      loginId: 'shiva@',
+      branchId: 'b1',
+    });
 
     expect(partnerId.next).toHaveBeenCalled();
     expect(db.deliveryPartnerProfile.create).toHaveBeenCalledWith(
@@ -220,13 +256,34 @@ describe('DeliveryPartnerService.list', () => {
     const { service, db } = buildService();
     db.deliveryPartnerProfile.findMany.mockResolvedValue([]);
 
-    await service.list(superAdmin, { search: 'shiva', status: 'ACTIVE', availability: 'ONLINE', limit: 10, offset: 5 });
+    await service.list(superAdmin, {
+      search: 'shiva',
+      status: 'ACTIVE',
+      availability: 'ONLINE',
+      limit: 10,
+      offset: 5,
+    });
 
-    const call = db.deliveryPartnerProfile.findMany.mock.calls[0]?.[0] as { where: Record<string, unknown>; skip: number; take: number };
+    const call = db.deliveryPartnerProfile.findMany.mock.calls[0]?.[0] as {
+      where: Record<string, unknown>;
+      skip: number;
+      take: number;
+    };
     expect(call.skip).toBe(5);
     expect(call.take).toBe(10);
     expect(call.where).toEqual(
       expect.objectContaining({ status: 'ACTIVE', availability: 'ONLINE' }),
+    );
+  });
+
+  it('lets a super admin scope the list to a chosen branch', async () => {
+    const { service, db } = buildService();
+    db.deliveryPartnerProfile.findMany.mockResolvedValue([]);
+
+    await service.list(superAdmin, { branchId: 'b2' });
+
+    expect(db.deliveryPartnerProfile.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ branchId: 'b2' }) }),
     );
   });
 });
@@ -257,12 +314,18 @@ describe('DeliveryPartnerService.get', () => {
 describe('DeliveryPartnerService.update', () => {
   it('persists editable profile fields', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findFirst.mockResolvedValue(partnerSource('DOCUMENT_REVIEW', 'OFFLINE'));
-    db.deliveryPartnerProfile.update.mockResolvedValue(
-      { ...partnerSource('DOCUMENT_REVIEW', 'OFFLINE'), mobile: '9888899999' },
+    db.deliveryPartnerProfile.findFirst.mockResolvedValue(
+      partnerSource('DOCUMENT_REVIEW', 'OFFLINE'),
     );
+    db.deliveryPartnerProfile.update.mockResolvedValue({
+      ...partnerSource('DOCUMENT_REVIEW', 'OFFLINE'),
+      mobile: '9888899999',
+    });
 
-    const result = await service.update(manager, 'p1', { mobile: '9888899999', vehicleNumber: 'AP07 9999' });
+    const result = await service.update(manager, 'p1', {
+      mobile: '9888899999',
+      vehicleNumber: 'AP07 9999',
+    });
 
     expect(db.deliveryPartnerProfile.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -286,9 +349,10 @@ describe('DeliveryPartnerService.setAccountStatus', () => {
   it('activates a verified partner', async () => {
     const { service, db } = buildService();
     db.deliveryPartnerProfile.findFirst.mockResolvedValue(partnerSource('VERIFIED', 'OFFLINE'));
-    db.deliveryPartnerProfile.update.mockResolvedValue(
-      { ...partnerSource('ACTIVE', 'OFFLINE'), joinedAt: new Date() },
-    );
+    db.deliveryPartnerProfile.update.mockResolvedValue({
+      ...partnerSource('ACTIVE', 'OFFLINE'),
+      joinedAt: new Date(),
+    });
     db.deliveryAssignment.groupBy.mockResolvedValue([]);
 
     const result = await service.setAccountStatus(manager, 'p1', { status: 'ACTIVE' });
@@ -298,7 +362,9 @@ describe('DeliveryPartnerService.setAccountStatus', () => {
 
   it('rejects activation of a partner who is not verified yet', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findFirst.mockResolvedValue(partnerSource('PENDING_VERIFICATION', 'OFFLINE'));
+    db.deliveryPartnerProfile.findFirst.mockResolvedValue(
+      partnerSource('PENDING_VERIFICATION', 'OFFLINE'),
+    );
 
     await expect(service.setAccountStatus(manager, 'p1', { status: 'ACTIVE' })).rejects.toThrow(
       ConflictException,
@@ -332,7 +398,9 @@ describe('DeliveryPartnerService.setAccountStatus', () => {
 describe('DeliveryPartnerService.review', () => {
   it('begins document review from pending verification', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findFirst.mockResolvedValue(partnerSource('PENDING_VERIFICATION', 'OFFLINE'));
+    db.deliveryPartnerProfile.findFirst.mockResolvedValue(
+      partnerSource('PENDING_VERIFICATION', 'OFFLINE'),
+    );
     db.deliveryPartnerProfile.update.mockResolvedValue(partnerSource('DOCUMENT_REVIEW', 'OFFLINE'));
 
     const result = await service.review(manager, 'p1', { action: 'BEGIN_REVIEW' });
@@ -342,7 +410,9 @@ describe('DeliveryPartnerService.review', () => {
 
   it('rejects beginning review when already under review', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findFirst.mockResolvedValue(partnerSource('DOCUMENT_REVIEW', 'OFFLINE'));
+    db.deliveryPartnerProfile.findFirst.mockResolvedValue(
+      partnerSource('DOCUMENT_REVIEW', 'OFFLINE'),
+    );
 
     await expect(service.review(manager, 'p1', { action: 'BEGIN_REVIEW' })).rejects.toThrow(
       ConflictException,
@@ -351,9 +421,18 @@ describe('DeliveryPartnerService.review', () => {
 
   it('approves only when all required documents are verified', async () => {
     const { service, db } = buildService();
-    const source = { ...partnerSource('DOCUMENT_REVIEW', 'OFFLINE'), documents: verifiedDocuments() };
+    const source = {
+      ...partnerSource('DOCUMENT_REVIEW', 'OFFLINE'),
+      documents: verifiedDocuments(),
+    };
     db.deliveryPartnerProfile.findFirst.mockResolvedValue(source);
-    const approved = { ...source, status: 'VERIFIED', identityVerified: true, addressProofVerified: true, licenceVerified: true };
+    const approved = {
+      ...source,
+      status: 'VERIFIED',
+      identityVerified: true,
+      addressProofVerified: true,
+      licenceVerified: true,
+    };
     db.deliveryPartnerProfile.update.mockResolvedValue(approved);
     db.deliveryPartnerProfile.groupBy.mockResolvedValue([]);
 
@@ -370,10 +449,38 @@ describe('DeliveryPartnerService.review', () => {
     const source = {
       ...partnerSource('DOCUMENT_REVIEW', 'OFFLINE'),
       documents: [
-        { id: 'd1', type: 'AADHAAR', documentReference: 'aadhaar-ref', status: 'UPLOADED', verificationNote: null, verifiedAt: null },
-        { id: 'd2', type: 'ADDRESS_PROOF', documentReference: 'addr-ref', status: 'UPLOADED', verificationNote: null, verifiedAt: null },
-        { id: 'd3', type: 'PAN', documentReference: 'pan-ref', status: 'UPLOADED', verificationNote: null, verifiedAt: null },
-        { id: 'd4', type: 'DRIVING_LICENSE', documentReference: 'dl-ref', status: 'REJECTED', verificationNote: 'blurry', verifiedAt: null },
+        {
+          id: 'd1',
+          type: 'AADHAAR',
+          documentReference: 'aadhaar-ref',
+          status: 'UPLOADED',
+          verificationNote: null,
+          verifiedAt: null,
+        },
+        {
+          id: 'd2',
+          type: 'ADDRESS_PROOF',
+          documentReference: 'addr-ref',
+          status: 'UPLOADED',
+          verificationNote: null,
+          verifiedAt: null,
+        },
+        {
+          id: 'd3',
+          type: 'PAN',
+          documentReference: 'pan-ref',
+          status: 'UPLOADED',
+          verificationNote: null,
+          verifiedAt: null,
+        },
+        {
+          id: 'd4',
+          type: 'DRIVING_LICENSE',
+          documentReference: 'dl-ref',
+          status: 'REJECTED',
+          verificationNote: 'blurry',
+          verifiedAt: null,
+        },
       ],
     };
     db.deliveryPartnerProfile.findFirst.mockResolvedValue(source);
@@ -386,20 +493,25 @@ describe('DeliveryPartnerService.review', () => {
   it('activates a verified partner and sets joinedAt', async () => {
     const { service, db } = buildService();
     db.deliveryPartnerProfile.findFirst.mockResolvedValue(partnerSource('VERIFIED', 'OFFLINE'));
-    db.deliveryPartnerProfile.update.mockResolvedValue(
-      { ...partnerSource('ACTIVE', 'OFFLINE'), joinedAt: new Date() },
-    );
+    db.deliveryPartnerProfile.update.mockResolvedValue({
+      ...partnerSource('ACTIVE', 'OFFLINE'),
+      joinedAt: new Date(),
+    });
 
     const result = await service.review(manager, 'p1', { action: 'ACTIVATE' });
 
     expect(result.status).toBe('ACTIVE');
-    const call = db.deliveryPartnerProfile.update.mock.calls[0]?.[0] as { data: { joinedAt?: Date } };
+    const call = db.deliveryPartnerProfile.update.mock.calls[0]?.[0] as {
+      data: { joinedAt?: Date };
+    };
     expect(call.data.joinedAt).toBeInstanceOf(Date);
   });
 
   it('requires a rejection reason to reject a partner', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findFirst.mockResolvedValue(partnerSource('DOCUMENT_REVIEW', 'OFFLINE'));
+    db.deliveryPartnerProfile.findFirst.mockResolvedValue(
+      partnerSource('DOCUMENT_REVIEW', 'OFFLINE'),
+    );
 
     await expect(service.review(manager, 'p1', { action: 'REJECT' })).rejects.toThrow(
       BadRequestException,
@@ -408,13 +520,19 @@ describe('DeliveryPartnerService.review', () => {
 
   it('rejects a partner and forces them offline', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findFirst.mockResolvedValue(partnerSource('DOCUMENT_REVIEW', 'OFFLINE'));
-    db.deliveryPartnerProfile.update.mockResolvedValue(
-      { ...partnerSource('REJECTED', 'OFFLINE'), rejectionReason: 'fake documents' },
+    db.deliveryPartnerProfile.findFirst.mockResolvedValue(
+      partnerSource('DOCUMENT_REVIEW', 'OFFLINE'),
     );
+    db.deliveryPartnerProfile.update.mockResolvedValue({
+      ...partnerSource('REJECTED', 'OFFLINE'),
+      rejectionReason: 'fake documents',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue(null);
 
-    const result = await service.review(manager, 'p1', { action: 'REJECT', rejectionReason: 'fake documents' });
+    const result = await service.review(manager, 'p1', {
+      action: 'REJECT',
+      rejectionReason: 'fake documents',
+    });
 
     expect(result.status).toBe('REJECTED');
   });
@@ -423,16 +541,24 @@ describe('DeliveryPartnerService.review', () => {
 describe('DeliveryPartnerService.upsertDocument', () => {
   it('uploads a document and resets prior verification', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findFirst.mockResolvedValue(
-      { ...partnerSource('PENDING_VERIFICATION', 'OFFLINE'), documents: [] },
-    );
+    db.deliveryPartnerProfile.findFirst.mockResolvedValue({
+      ...partnerSource('PENDING_VERIFICATION', 'OFFLINE'),
+      documents: [],
+    });
 
-    await service.upsertDocument(manager, 'p1', { type: 'AADHAAR', documentReference: 'aadhaar-ref' });
+    await service.upsertDocument(manager, 'p1', {
+      type: 'AADHAAR',
+      documentReference: 'aadhaar-ref',
+    });
 
     expect(db.deliveryPartnerDocument.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { deliveryPartnerId_type: { deliveryPartnerId: 'p1', type: 'AADHAAR' } },
-        update: expect.objectContaining({ status: 'UPLOADED', verificationNote: null, verifiedAt: null }),
+        update: expect.objectContaining({
+          status: 'UPLOADED',
+          verificationNote: null,
+          verifiedAt: null,
+        }),
         create: expect.objectContaining({ status: 'UPLOADED' }),
       }),
     );
@@ -442,18 +568,19 @@ describe('DeliveryPartnerService.upsertDocument', () => {
     const { service, db } = buildService();
     db.deliveryPartnerProfile.findFirst.mockResolvedValue(partnerSource('SUSPENDED', 'OFFLINE'));
 
-    await expect(
-      service.upsertDocument(manager, 'p1', { type: 'AADHAAR' }),
-    ).rejects.toThrow(ConflictException);
+    await expect(service.upsertDocument(manager, 'p1', { type: 'AADHAAR' })).rejects.toThrow(
+      ConflictException,
+    );
   });
 });
 
 describe('DeliveryPartnerService.reviewDocument', () => {
   it('returns 404 when the document is not on the partner profile', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findFirst.mockResolvedValue(
-      { ...partnerSource('DOCUMENT_REVIEW', 'OFFLINE'), documents: [] },
-    );
+    db.deliveryPartnerProfile.findFirst.mockResolvedValue({
+      ...partnerSource('DOCUMENT_REVIEW', 'OFFLINE'),
+      documents: [],
+    });
 
     await expect(
       service.reviewDocument(manager, 'p1', 'missing-doc', { action: 'APPROVE' }),

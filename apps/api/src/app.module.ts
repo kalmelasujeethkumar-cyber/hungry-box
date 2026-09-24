@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { AddressesModule } from './modules/addresses/addresses.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BranchOrdersModule } from './modules/branch-orders/branch-orders.module';
@@ -53,6 +54,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     NotificationsModule,
     RealtimeModule,
     HealthModule,
+    AnalyticsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

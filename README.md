@@ -19,15 +19,16 @@ One application, one authentication flow, role-based routing after login:
 
 ## Project status
 
-**Phase 6 - Branch Manager operations (current).** Phase 6 completes the branch manager's
-operations surface on top of the verified Phase 4/5 base: branch-scoped catalog edit &
-soft-hide, branch settings (delivery radius is branch configuration), a fully
-branch-scoped audit log (read + CSV export), a manager dashboard/order/catalog/settings/
-audit frontend, and branch-id plumbing through every audit write. Deliveries are
-dispatched and tracked (Phase 5), checkout/payments/orders are server-verified (Phase 4),
-and Phases 1-3 (monorepo foundation, RBAC/catalog, storefront/cart/serviceability) remain
-green. Phase 7 (Super Admin — global branch/product/payout administration, analytics) is
-**not** started; see Development phases.
+**Phase 7 - Super Admin operations (current).** Phase 7 completes the Super Admin's global
+operations surface on top of the verified Phase 4/5/6 base: branch lifecycle management
+(activate/pause/deactivate), branch manager administration (with one-time passwords),
+suspended-user enforcement in the auth guard, a global catalog (products, categories,
+images), cross-branch order/delivery/audit visibility, and a read-only analytics +
+reports layer (Recharts dashboards + CSV exports). Deliveries, checkout/payments/orders,
+branch-scoped manager operations, and the customer/delivery experiences all remain green.
+Phase 7 was delivered **migration-free** — no schema change or migration was run. See
+`docs/phase-7-report.md` for the 38-point delivery report. What remains (Phase 8+) is
+refund actions, promotions, payouts, and the remaining admin dashboards.
 
 ## Technology stack
 
@@ -203,6 +204,30 @@ soft-deactivate instead of deleting; every mutation is branch-owned server-side 
 cross-branch) and audited with the branch id recorded. Delivery radius lives on
 `branch.deliveryRadiusKm` and is editable per branch — never a hard-coded constant.
 
+## Phase 7 endpoints (summary)
+
+Added in Phase 7 (all Bearer JWT; `SUPER_ADMIN` unless noted):
+
+| Endpoint                                                                 | Purpose                                                     |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `PATCH /api/branches/:id/status`                                         | Activate / pause / deactivate a branch (lifecycle state)    |
+| `PATCH /api/branches/:id`                                                | Edit branch config (delivery radius, address)               |
+| `GET /api/branches`                                                      | Full branch list for the admin console                      |
+| `POST /api/users/managers`                                               | Create branch manager (returns one-time password once)      |
+| `GET /api/users?role=BRANCH_MANAGER`                                     | Manager list (search / branch / status / pagination)        |
+| `PATCH /api/users/:id/status`                                            | Activate / deactivate / suspend a manager                   |
+| `GET`/`POST`/`PATCH /api/products` (+ `PATCH /:id/status`, image routes) | Global product management (no physical deletes)             |
+| `GET`/`POST`/`PATCH /api/categories`                                     | Global category management (soft status changes)            |
+| `GET /api/branch/orders`                                                 | Global order list (branch/status/date filters; Super Admin) |
+| `GET /api/delivery-partners`                                             | Partner list widened w/ branch filter (Super Admin)         |
+| `GET /api/branch/audit`, `/api/branch/audit/export`                      | Global audit explorer + CSV (new Phase 7 kinds queryable)   |
+| `GET /api/admin/dashboard`                                               | Analytics summary (branch/date/bucket filters)              |
+| `GET /api/admin/reports/orders`                                          | Orders report CSV (branch/date/status filters)              |
+
+Phase 7 was delivered without any schema migration — it reuses existing columns and
+entities; refund/analytics reporting derives from `Payment.status` (read-only; refund
+**actions** are a later-phase schema change).
+
 ## Development phases
 
 - **Phase 1:** Monorepo foundation, tooling (TS/eslint/prettier), shared contracts,
@@ -228,8 +253,13 @@ cross-branch) and audited with the branch id recorded. Delivery radius lives on
   (`AuditEvent.branchId` already in schema; branch id now plumbed through every audit
   write), manager dashboard/orders/catalogue/settings/audit frontend, and full API + web
   test coverage.
-- **Phase 7+:** Super Admin (global branches/products/users/payouts, analytics & charts),
-  refunds, promotions, and the remaining admin dashboards.
+- **Phase 7 (complete):** Super Admin operations - branch lifecycle management, branch
+  manager administration (one-time passwords), suspended-user enforcement (per-request),
+  global catalog with images, cross-branch order/delivery/audit visibility, and a read-only
+  analytics + reports layer (Recharts dashboards + CSV exports) with an admin frontend and
+  full API + web test coverage. Delivered migration-free (`docs/phase-7-report.md`).
+- **Phase 8+:** Refund actions (requires a schema change), promotions, payouts, and the
+  remaining admin dashboards.
 
 Phases are developed one at a time; the platform is built in-order, not by skipping ahead.
 

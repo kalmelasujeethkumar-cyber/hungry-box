@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import type { DeliveryAssignmentStatus } from '@hungrybox/shared';
 
 export class BranchAssignmentListQueryDto {
@@ -21,4 +21,10 @@ export class BranchAssignmentListQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+
+  /** Honoured only for SUPER_ADMIN; BRANCH_MANAGER is always pinned to their own branch. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  branchId?: string;
 }
