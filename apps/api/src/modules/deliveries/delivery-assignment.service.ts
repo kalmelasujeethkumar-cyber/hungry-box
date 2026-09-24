@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   DeliveryAssignmentDto,
   DeliveryAssignmentListItemDto,
@@ -274,6 +279,7 @@ export class DeliveryAssignmentService {
   async accept(userId: string, assignmentId: string): Promise<DeliveryAssignmentDto> {
     const db = this.prisma.requireClient();
     const profile = await this.partnerProfileFor(userId);
+    this.requireOperationalPartner(profile);
     const now = new Date();
     await db.$transaction(async (tx) => {
       const updated = await tx.deliveryAssignment.updateMany({
@@ -314,6 +320,7 @@ export class DeliveryAssignmentService {
   ): Promise<DeliveryAssignmentDto> {
     const db = this.prisma.requireClient();
     const profile = await this.partnerProfileFor(userId);
+    this.requireOperationalPartner(profile);
     const reason = dto.reason?.trim() || null;
     await db.$transaction(async (tx) => {
       const updated = await tx.deliveryAssignment.updateMany({
@@ -346,6 +353,7 @@ export class DeliveryAssignmentService {
   async pickup(userId: string, assignmentId: string): Promise<DeliveryAssignmentDto> {
     const db = this.prisma.requireClient();
     const profile = await this.partnerProfileFor(userId);
+    this.requireOperationalPartner(profile);
     const now = new Date();
     await db.$transaction(async (tx) => {
       const assignment = await tx.deliveryAssignment.findFirst({
@@ -399,6 +407,7 @@ export class DeliveryAssignmentService {
   async outForDelivery(userId: string, assignmentId: string): Promise<DeliveryAssignmentDto> {
     const db = this.prisma.requireClient();
     const profile = await this.partnerProfileFor(userId);
+    this.requireOperationalPartner(profile);
     const now = new Date();
     await db.$transaction(async (tx) => {
       const result = await tx.deliveryAssignment.updateMany({
@@ -431,6 +440,7 @@ export class DeliveryAssignmentService {
   async deliver(userId: string, assignmentId: string): Promise<DeliveryAssignmentDto> {
     const db = this.prisma.requireClient();
     const profile = await this.partnerProfileFor(userId);
+    this.requireOperationalPartner(profile);
     const now = new Date();
     await db.$transaction(async (tx) => {
       const assignment = await tx.deliveryAssignment.findFirst({
@@ -617,16 +627,26 @@ export class DeliveryAssignmentService {
     return toAssignmentDto(row);
   }
 
-  private async partnerProfileFor(userId: string): Promise<{ id: string; branchId: string }> {
+  private async partnerProfileFor(userId: string): Promise<{
+    id: string;
+    branchId: string;
+    status: string;
+  }> {
     const db = this.prisma.requireClient();
     const profile = await db.deliveryPartnerProfile.findUnique({
       where: { userId },
-      select: { id: true, branchId: true },
+      select: { id: true, branchId: true, status: true },
     });
     if (!profile) {
       throw new NotFoundException('Delivery partner profile not found');
     }
     return profile;
+  }
+
+  private requireOperationalPartner(profile: { status: string }): void {
+    if (profile.status !== 'ACTIVE') {
+      throw new ForbiddenException('Account is not active');
+    }
   }
 
   private enforcedBranchId(actor: DeliveryStaffActor): string | null {

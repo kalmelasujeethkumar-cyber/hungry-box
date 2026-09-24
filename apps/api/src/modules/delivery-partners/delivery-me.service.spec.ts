@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DeliveryConflictException } from '../../common/exceptions/delivery-conflict.exception';
@@ -93,9 +93,7 @@ function buildService<T extends Record<string, unknown> = ReturnType<typeof base
     requireClient: vi.fn().mockReturnValue(db),
   } as unknown as PrismaService;
   const partners = {
-    activeDeliveryCounts: vi
-      .fn()
-      .mockResolvedValue(new Map<string, number>([['p1', 0]])),
+    activeDeliveryCounts: vi.fn().mockResolvedValue(new Map<string, number>([['p1', 0]])),
   } as unknown as DeliveryPartnerService;
   const realtime = {
     emitToUser: vi.fn(),
@@ -128,13 +126,13 @@ describe('DeliveryMeService.getProfile', () => {
 describe('DeliveryMeService.setAvailability', () => {
   it('puts an active partner online and stamps wentOnlineAt', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue(
-      { id: 'p1', status: 'ACTIVE', availability: 'OFFLINE' },
-    );
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      availability: 'OFFLINE',
+    });
     db.deliveryPartnerProfile.updateMany.mockResolvedValue({ count: 1 });
-    db.deliveryPartnerProfile.findFirstOrThrow.mockResolvedValue(
-      profileSource('ACTIVE', 'ONLINE'),
-    );
+    db.deliveryPartnerProfile.findFirstOrThrow.mockResolvedValue(profileSource('ACTIVE', 'ONLINE'));
 
     const result = await service.setAvailability('u1', 'ONLINE');
 
@@ -148,9 +146,11 @@ describe('DeliveryMeService.setAvailability', () => {
 
   it('blocks going online when the partner is not ACTIVE', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue(
-      { id: 'p1', status: 'PENDING_VERIFICATION', availability: 'OFFLINE' },
-    );
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'PENDING_VERIFICATION',
+      availability: 'OFFLINE',
+    });
 
     await expect(service.setAvailability('u1', 'ONLINE')).rejects.toThrow(
       DeliveryConflictException,
@@ -159,9 +159,11 @@ describe('DeliveryMeService.setAvailability', () => {
 
   it('blocks going offline while a delivery is active', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue(
-      { id: 'p1', status: 'ACTIVE', availability: 'ON_DELIVERY' },
-    );
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      availability: 'ON_DELIVERY',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue({ id: 'a1' });
 
     await expect(service.setAvailability('u1', 'OFFLINE')).rejects.toThrow(
@@ -171,9 +173,11 @@ describe('DeliveryMeService.setAvailability', () => {
 
   it('goes offline when idle', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue(
-      { id: 'p1', status: 'ACTIVE', availability: 'ONLINE' },
-    );
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      availability: 'ONLINE',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue(null);
     db.deliveryPartnerProfile.update.mockResolvedValue({});
     db.deliveryPartnerProfile.findFirstOrThrow.mockResolvedValue(
@@ -192,22 +196,40 @@ describe('DeliveryMeService.setAvailability', () => {
 });
 
 describe('DeliveryMeService.updateLocation', () => {
+  it('forbids a suspended partner from pushing location updates', async () => {
+    const { service, db } = buildService();
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'SUSPENDED',
+      availability: 'ONLINE',
+    });
+
+    await expect(service.updateLocation('u1', { latitude: 16.3, longitude: 80.4 })).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(db.deliveryPartnerLocation.create).not.toHaveBeenCalled();
+  });
+
   it('rejects location updates while offline', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue(
-      { id: 'p1', availability: 'OFFLINE' },
-    );
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      availability: 'OFFLINE',
+    });
 
-    await expect(
-      service.updateLocation('u1', { latitude: 16.3, longitude: 80.4 }),
-    ).rejects.toThrow(DeliveryConflictException);
+    await expect(service.updateLocation('u1', { latitude: 16.3, longitude: 80.4 })).rejects.toThrow(
+      DeliveryConflictException,
+    );
   });
 
   it('records the location, updates profile coordinates and returns recordedAt', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue(
-      { id: 'p1', availability: 'ONLINE' },
-    );
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      availability: 'ONLINE',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue(null);
     db.deliveryPartnerLocation.count.mockResolvedValue(3);
 
@@ -238,9 +260,11 @@ describe('DeliveryMeService.updateLocation', () => {
 
   it('emits location updates to the customer and branch when a delivery is active', async () => {
     const { service, db, realtime } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue(
-      { id: 'p1', availability: 'ON_DELIVERY' },
-    );
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      availability: 'ON_DELIVERY',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue({
       id: 'a1',
       branchId: 'b1',
@@ -264,9 +288,11 @@ describe('DeliveryMeService.updateLocation', () => {
 
   it('prunes history beyond the per-partner cap', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue(
-      { id: 'p1', availability: 'ONLINE' },
-    );
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      availability: 'ONLINE',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue(null);
     db.deliveryPartnerLocation.count.mockResolvedValue(501);
     db.deliveryPartnerLocation.findMany.mockResolvedValue([{ id: 'oldest' }]);
@@ -280,9 +306,11 @@ describe('DeliveryMeService.updateLocation', () => {
 
   it('skips pruning when history is within the cap', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue(
-      { id: 'p1', availability: 'ONLINE' },
-    );
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      availability: 'ONLINE',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue(null);
     db.deliveryPartnerLocation.count.mockResolvedValue(50);
 

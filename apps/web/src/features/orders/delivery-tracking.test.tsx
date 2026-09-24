@@ -1,13 +1,29 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DeliveryTrackingDto } from '@hungrybox/shared';
+import type { DeliveryRealtimeEvent, DeliveryTrackingDto } from '@hungrybox/shared';
 import DeliveryTrackingSection from './DeliveryTrackingSection';
 
 const MOCK_APIS = vi.hoisted(() => ({
   deliveryTrackingApi: { get: vi.fn() },
 }));
 
+const MOCK_REALTIME = vi.hoisted(() => ({
+  state: { lastEvent: null as DeliveryRealtimeEvent | null, connected: false, refetchKey: 0 },
+}));
+
 vi.mock('../../api/client', () => MOCK_APIS);
+vi.mock('../delivery/use-delivery-realtime', () => ({
+  useDeliveryRealtime: () => MOCK_REALTIME.state,
+}));
+
+const REALTIME_EVENT: DeliveryRealtimeEvent = {
+  type: 'delivery.assignment.created',
+  assignmentId: 'assign-1',
+  orderId: 'ord-9',
+  orderNumber: 'HB-20260923-000007',
+  status: 'ASSIGNED',
+  at: '2026-09-23T10:30:00.000Z',
+};
 
 const TRACKING_LIVE: DeliveryTrackingDto = {
   orderId: 'ord-9',
@@ -29,7 +45,12 @@ const TRACKING_LIVE: DeliveryTrackingDto = {
     vehicleNumber: 'AP07AB4321',
     mobile: '9000000000',
   },
-  location: { latitude: 16.305, longitude: 80.445, accuracy: 12, recordedAt: '2026-09-23T10:41:00.000Z' },
+  location: {
+    latitude: 16.305,
+    longitude: 80.445,
+    accuracy: 12,
+    recordedAt: '2026-09-23T10:41:00.000Z',
+  },
   distanceToDestinationKm: 2.4,
   trackingAvailable: true,
 };
@@ -69,6 +90,7 @@ const TRACKING_DELIVERED: DeliveryTrackingDto = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  MOCK_REALTIME.state = { lastEvent: null, connected: false, refetchKey: 0 };
 });
 
 describe('customer delivery tracking', () => {
@@ -77,9 +99,7 @@ describe('customer delivery tracking', () => {
     render(<DeliveryTrackingSection orderId="ord-9" orderStatus="PREPARING" token="t" />);
 
     expect(await screen.findByText('Waiting for a partner')).toBeInTheDocument();
-    expect(
-      screen.getByText(/will be assigned once your order is ready/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/will be assigned once your order is ready/)).toBeInTheDocument();
   });
 
   it('shows the partner, vehicle and live distance while out for delivery', async () => {
@@ -94,7 +114,10 @@ describe('customer delivery tracking', () => {
       'href',
       expect.stringMatching(/16\.305/),
     );
-    expect(screen.getByRole('link', { name: 'Call partner' })).toHaveAttribute('href', 'tel:9000000000');
+    expect(screen.getByRole('link', { name: 'Call partner' })).toHaveAttribute(
+      'href',
+      'tel:9000000000',
+    );
     expect(MOCK_APIS.deliveryTrackingApi.get).toHaveBeenCalledWith('ord-9', 't');
   });
 
@@ -118,5 +141,38 @@ describe('customer delivery tracking', () => {
     render(<DeliveryTrackingSection orderId="ord-9" orderStatus="OUT_FOR_DELIVERY" token="t" />);
 
     expect(await screen.findByText('Unable to reach the server')).toBeInTheDocument();
+  });
+
+  it('refetches instantly when a realtime delivery event arrives for this order', async () => {
+    MOCK_APIS.deliveryTrackingApi.get.mockResolvedValue(TRACKING_WAITING);
+    const view = render(
+      <DeliveryTrackingSection orderId="ord-9" orderStatus="PREPARING" token="t" />,
+    );
+
+    expect(await screen.findByText('Waiting for a partner')).toBeInTheDocument();
+    expect(MOCK_APIS.deliveryTrackingApi.get).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Syncing')).toBeInTheDocument();
+
+    MOCK_REALTIME.state = { lastEvent: REALTIME_EVENT, connected: true, refetchKey: 1 };
+    view.rerender(<DeliveryTrackingSection orderId="ord-9" orderStatus="PREPARING" token="t" />);
+
+    expect(MOCK_APIS.deliveryTrackingApi.get).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Live')).toBeInTheDocument();
+  });
+
+  it('ignores realtime delivery events for other orders', async () => {
+    MOCK_APIS.deliveryTrackingApi.get.mockResolvedValue(TRACKING_WAITING);
+    const view = render(
+      <DeliveryTrackingSection orderId="ord-9" orderStatus="PREPARING" token="t" />,
+    );
+
+    await screen.findByText('Waiting for a partner');
+    expect(MOCK_APIS.deliveryTrackingApi.get).toHaveBeenCalledTimes(1);
+
+    const otherEvent: DeliveryRealtimeEvent = { ...REALTIME_EVENT, orderId: 'ord-other' };
+    MOCK_REALTIME.state = { lastEvent: otherEvent, connected: true, refetchKey: 1 };
+    view.rerender(<DeliveryTrackingSection orderId="ord-9" orderStatus="PREPARING" token="t" />);
+
+    expect(MOCK_APIS.deliveryTrackingApi.get).toHaveBeenCalledTimes(1);
   });
 });

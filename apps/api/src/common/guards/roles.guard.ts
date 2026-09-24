@@ -13,10 +13,15 @@ import type { AuthenticatedRequest } from '../interfaces/authenticated-request';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
 /**
- * Privileged staff whose user account must still be ACTIVE for an already-issued
- * JWT to keep working. CUSTOMER and DELIVERY_PARTNER behaviour is unchanged.
+ * Privileged roles whose user account must still be ACTIVE for an already-issued
+ * JWT to keep working. CUSTOMER behaviour is unchanged, so suspending a customer
+ * user only stops new logins, not existing sessions.
  */
-const STAFF_ROLES: ReadonlyArray<UserRole> = ['SUPER_ADMIN', 'BRANCH_MANAGER'];
+const REVALIDATED_ROLES: ReadonlyArray<UserRole> = [
+  'SUPER_ADMIN',
+  'BRANCH_MANAGER',
+  'DELIVERY_PARTNER',
+];
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -40,13 +45,13 @@ export class RolesGuard implements CanActivate {
     if (!requiredRoles.includes(user.role)) {
       throw new ForbiddenException('Role not permitted');
     }
-    if (STAFF_ROLES.includes(user.role)) {
-      await this.ensureActive(user.sub);
+    if (REVALIDATED_ROLES.includes(user.role)) {
+      await this.ensureActive(user.sub, user.role);
     }
     return true;
   }
 
-  private async ensureActive(userId: string): Promise<void> {
+  private async ensureActive(userId: string, role: UserRole): Promise<void> {
     const db = this.prisma.requireClient();
     const user = await db.user.findUnique({
       where: { id: userId },
@@ -54,6 +59,15 @@ export class RolesGuard implements CanActivate {
     });
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new ForbiddenException('Account is not active');
+    }
+    if (role === 'DELIVERY_PARTNER') {
+      const profile = await db.deliveryPartnerProfile.findUnique({
+        where: { userId },
+        select: { id: true, status: true },
+      });
+      if (!profile || profile.status !== 'ACTIVE') {
+        throw new ForbiddenException('Account is not active');
+      }
     }
   }
 }

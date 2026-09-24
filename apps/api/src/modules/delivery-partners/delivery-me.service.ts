@@ -1,5 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import type { DeliveryAssignmentStatus, DeliveryPartnerProfileDto, DeliveryRealtimeEvent } from '@hungrybox/shared';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type {
+  DeliveryAssignmentStatus,
+  DeliveryPartnerProfileDto,
+  DeliveryRealtimeEvent,
+} from '@hungrybox/shared';
 import type { Prisma } from '../../generated/prisma/client';
 import { DeliveryAvailability } from '../../generated/prisma/enums';
 import { DeliveryConflictException } from '../../common/exceptions/delivery-conflict.exception';
@@ -123,10 +127,13 @@ export class DeliveryMeService {
     const db = this.prisma.requireClient();
     const profile = await db.deliveryPartnerProfile.findUnique({
       where: { userId },
-      select: { id: true, availability: true },
+      select: { id: true, status: true, availability: true },
     });
     if (!profile) {
       throw new NotFoundException('Delivery partner profile not found');
+    }
+    if (profile.status !== 'ACTIVE') {
+      throw new ForbiddenException('Account is not active');
     }
     if (profile.availability === 'OFFLINE') {
       throw new DeliveryConflictException(

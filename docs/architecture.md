@@ -494,6 +494,23 @@ plus explicit cancel windows, recorded as append-only `OrderEvent`rows and`*At` 
 - **2026-09 / ADR-027 Refund reporting only in Phase 7:** cancellations/refund summaries are
   derived from `Payment.status`; there is deliberately **no refund action workflow** — a
   refund action needs a schema change and is deferred to a later phase.
+- **2026-09 / ADR-028 Delivery-partner suspension is enforced at every layer:** Phase 7
+  re-validated `User.status` for SUPER_ADMIN/BRANCH_MANAGER but not DELIVERY_PARTNER, and a
+  profile-level suspend was never enforced. Phase 8 extends ADR-024 with
+  `REVALIDATED_ROLES = [SUPER_ADMIN, BRANCH_MANAGER, DELIVERY_PARTNER]`, so the guard also
+  requires `deliveryPartnerProfile.status === 'ACTIVE'` for partner routes, and, as defense
+  in depth, the assignment/location services independently throw 403 for non-ACTIVE
+  profiles (a suspended partner's existing JWT dies on the next request). CUSTOMER sessions
+  stay user-status-only.
+- **2026-09 / ADR-029 Realtime CORS is explicit, not a wildcard:** the `/realtime` Socket.IO
+  gateway no longer serves `cors: { origin: true }`; CORS is wired through an
+  `IoAdapter` from the same `CORS_ORIGINS` allow-list as the HTTP API, and defaults to
+  `origin: false` (deny) when unset — serving clients across origins is an explicit
+  operator decision.
+- **2026-09 / ADR-030 Realtime tracking is a mirror of authoritative REST:** the customer
+  tracking section refetches the REST tracking DTO when a delivery event arrives for that
+  order (events for other orders are ignored); socket payloads are never trusted as data,
+  so a desync heals on the next event or poll.
 
 ---
 
@@ -528,3 +545,25 @@ refund **action** workflow is deliberately out of scope until a future schema ch
 Recharts was added to `apps/web` only. Nothing was committed in Phase 7 (baseline
 `4c59b88`); see `docs/phase-7-report.md` for the 38-point delivery report and ADRs 22–27
 above for the decisions.
+
+## Phase 8 status (complete)
+
+Phase 8 (Live Delivery Lifecycle, Branch Isolation & Realtime Hardening) is **shipped and
+verified**: delivery-partner suspension is now enforced end to end (guard re-validates
+`User.status` + partner profile status; assignment/location services throw 403 as defense in
+depth; the realtime gateway disconnects non-operational users), the `/realtime` Socket.IO
+gateway CORS follows the same explicit `CORS_ORIGINS` allow-list as the HTTP API (deny by
+default instead of `origin: true`), and the customer tracking section shows a Live/Syncing
+badge and refetches authoritative REST when a delivery event arrives for its order. A new
+opt-in live suite (`RUN_LIVE_E2E=1` + `DATABASE_URL`) drives the real Postgres chain end to
+end (customer -> dev-payment -> manager -> assignment -> delivered -> audit/analytics),
+proves branch isolation on the delivery boundary (`delivery.partner_ineligible`, foreign
+partner invisible to a pinned manager), and verifies a suspended partner's existing JWT is
+rejected on the next request. Verified green: **API 307 passed / 5 skipped, Web 97 passed**,
+typecheck, lint, full build, and `prisma validate`.
+
+Phase 8 is **migration-free**: no `schema.prisma` change, no migration, no `db push`, no
+reseed. Payment verification is exercised against the existing **development payment
+provider**; a production gateway remains deferred. Nothing was committed in Phase 8
+(baseline `c73f7b0`); see `docs/phase-8-report.md` for the delivery checklist and ADRs
+28–30 above for the decisions.

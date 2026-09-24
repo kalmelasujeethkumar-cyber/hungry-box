@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
 import type { DeliveryTrackingDto, OrderStatus } from '@hungrybox/shared';
 import { deliveryTrackingApi } from '../../api/client';
+import { useDeliveryRealtime } from '../delivery/use-delivery-realtime';
 import { ASSIGNMENT_STATUS_LABELS } from '../delivery/delivery-status';
 import { LocationIcon, PackageIcon } from '../storefront/components/icons';
 
@@ -22,6 +23,7 @@ export default function DeliveryTrackingSection({
 }: DeliveryTrackingSectionProps): JSX.Element {
   const [tracking, setTracking] = useState<DeliveryTrackingDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { lastEvent, refetchKey, connected } = useDeliveryRealtime();
 
   const isLive = ['ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(
     tracking?.assignment?.status ?? '',
@@ -56,6 +58,17 @@ export default function DeliveryTrackingSection({
     };
   }, [orderId, token, orderStatus]);
 
+  useEffect(() => {
+    // Realtime is a live mirror; REST stays authoritative. Refetch when a
+    // realtime event arrives for this order so the section updates instantly
+    // instead of waiting for the next poll. Events for other orders are
+    // ignored so a customer with several orders is not churned.
+    if (!orderId || !token) return;
+    if (refetchKey === 0) return;
+    if (lastEvent && lastEvent.orderId !== orderId) return;
+    deliveryTrackingApi.get(orderId, token).catch(() => undefined);
+  }, [orderId, token, lastEvent, refetchKey]);
+
   if (error && !tracking) {
     return (
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -83,9 +96,28 @@ export default function DeliveryTrackingSection({
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4">
-      <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
-        Delivery status
-      </h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+          Delivery status
+        </h2>
+        <span
+          className={
+            connected
+              ? 'inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700'
+              : 'inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700'
+          }
+        >
+          <span
+            className={
+              connected
+                ? 'h-1.5 w-1.5 rounded-full bg-emerald-600'
+                : 'h-1.5 w-1.5 rounded-full bg-amber-500'
+            }
+            aria-hidden="true"
+          />
+          {connected ? 'Live' : 'Syncing'}
+        </span>
+      </div>
 
       {!tracking.trackingAvailable || !partner ? (
         <div className="mt-3 flex items-start gap-3">
@@ -116,11 +148,7 @@ export default function DeliveryTrackingSection({
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-sky text-brand-navy">
               {partner.profilePhotoUrl ? (
-                <img
-                  src={partner.profilePhotoUrl}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
+                <img src={partner.profilePhotoUrl} alt="" className="h-full w-full object-cover" />
               ) : (
                 <span className="text-sm font-extrabold">
                   {partner.fullName.slice(0, 1).toUpperCase()}

@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { HungryBoxIoAdapter } from './modules/realtime/cors-io.adapter';
 
 async function bootstrap() {
   if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
@@ -22,13 +23,23 @@ async function bootstrap() {
     }),
   );
 
-  const corsOrigins = config.get<string>('CORS_ORIGINS', '').trim();
-  if (corsOrigins) {
+  const corsOrigins = config
+    .get<string>('CORS_ORIGINS', '')
+    .trim()
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  if (corsOrigins.length > 0) {
     app.enableCors({
-      origin: corsOrigins.split(',').map((o) => o.trim()),
+      origin: corsOrigins,
       credentials: true,
     });
   }
+
+  app.useWebSocketAdapter(
+    new HungryBoxIoAdapter(app, corsOrigins.length > 0 ? corsOrigins : undefined),
+  );
 
   const port = Number(config.get<string>('PORT', '3000'));
   await app.listen(port);

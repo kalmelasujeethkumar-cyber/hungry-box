@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DeliveryConflictException } from '../../common/exceptions/delivery-conflict.exception';
@@ -375,7 +375,11 @@ describe('DeliveryAssignmentService.list', () => {
 describe('DeliveryAssignmentService.accept / reject', () => {
   it('accepts a pending assignment and moves the partner to ON_DELIVERY', async () => {
     const { service, db, audit, events } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.updateMany.mockResolvedValue({ count: 1 });
     db.deliveryPartnerProfile.update.mockResolvedValue({});
     db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('ACCEPTED'));
@@ -406,7 +410,11 @@ describe('DeliveryAssignmentService.accept / reject', () => {
 
   it('rejects accepting an assignment that is no longer pending', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(service.accept('u1', 'a1')).rejects.toThrow(DeliveryConflictException);
@@ -414,7 +422,11 @@ describe('DeliveryAssignmentService.accept / reject', () => {
 
   it('rejects an assignment with a reason and announces the rejection', async () => {
     const { service, db, audit, events } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.updateMany.mockResolvedValue({ count: 1 });
     db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('REJECTED'));
 
@@ -439,12 +451,28 @@ describe('DeliveryAssignmentService.accept / reject', () => {
       expect.anything(),
     );
   });
+
+  it('forbids a suspended partner from accepting an assignment', async () => {
+    const { service, db } = buildService();
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'SUSPENDED',
+      userId: 'u1',
+    });
+
+    await expect(service.accept('u1', 'a1')).rejects.toThrow(ForbiddenException);
+    expect(db.deliveryAssignment.updateMany).not.toHaveBeenCalled();
+  });
 });
 
 describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
   it('picks up an accepted assignment and advances the order to OUT_FOR_DELIVERY', async () => {
     const { service, db, audit, events } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue({
       id: 'a1',
       status: 'ACCEPTED',
@@ -480,7 +508,11 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
 
   it('rejects pickup when the assignment is not accepted', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue({
       id: 'a1',
       status: 'ASSIGNED',
@@ -492,7 +524,11 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
 
   it('moves a picked-up assignment to OUT_FOR_DELIVERY', async () => {
     const { service, db, audit } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.updateMany.mockResolvedValue({ count: 1 });
     db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('OUT_FOR_DELIVERY'));
 
@@ -512,7 +548,11 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
 
   it('delivers an out-for-delivery assignment, advances the order and returns partner ONLINE', async () => {
     const { service, db, audit, events } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue({
       id: 'a1',
       status: 'OUT_FOR_DELIVERY',
@@ -552,7 +592,11 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
 
   it('rejects delivery when the assignment is not out for delivery', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue({
       id: 'a1',
       status: 'ACCEPTED',
@@ -566,7 +610,11 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
 describe('DeliveryAssignmentService.myAssignments / getOwn', () => {
   it("lists the caller's assignments", async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.findMany.mockResolvedValue([
       {
         id: 'a1',
@@ -593,7 +641,11 @@ describe('DeliveryAssignmentService.myAssignments / getOwn', () => {
 
   it('returns 404 when the assignment is not owned by the caller', async () => {
     const { service, db } = buildService();
-    db.deliveryPartnerProfile.findUnique.mockResolvedValue({ id: 'p1', userId: 'u1' });
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
     db.deliveryAssignment.findFirst.mockResolvedValue(null);
 
     await expect(service.getOwn('u1', 'other-a')).rejects.toThrow(NotFoundException);

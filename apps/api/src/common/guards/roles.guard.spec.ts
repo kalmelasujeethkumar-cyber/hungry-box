@@ -13,11 +13,20 @@ function makeContext(request: Record<string, unknown>): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-function makePrisma(status: string | null): { prisma: PrismaService; findUnique: Mock } {
+function makePrisma(
+  status: string | null,
+  partnerStatus: string | null = 'ACTIVE',
+): { prisma: PrismaService; findUnique: Mock; partnerFindUnique: Mock } {
   const findUnique = vi.fn().mockResolvedValue(status === null ? null : { id: 'u1', status });
-  const client = { user: { findUnique } } as unknown as PrismaClient;
+  const partnerFindUnique = vi
+    .fn()
+    .mockResolvedValue(partnerStatus === null ? null : { id: 'p1', status: partnerStatus });
+  const client = {
+    user: { findUnique },
+    deliveryPartnerProfile: { findUnique: partnerFindUnique },
+  } as unknown as PrismaClient;
   const prisma = { requireClient: () => client } as unknown as PrismaService;
-  return { prisma, findUnique };
+  return { prisma, findUnique, partnerFindUnique };
 }
 
 function makeReflector(roles: string[] | undefined): Reflector {
@@ -93,13 +102,29 @@ describe('RolesGuard', () => {
     await expect(guard.canActivate(makeContext({}))).rejects.toThrow(UnauthorizedException);
   });
 
-  it('keeps DELIVERY_PARTNER behaviour unchanged (no account status check)', async () => {
-    const { prisma, findUnique } = makePrisma('ACTIVE');
+  it('allows an active DELIVERY_PARTNER on a DELIVERY_PARTNER route', async () => {
+    const { prisma } = makePrisma('ACTIVE', 'ACTIVE');
     const guard = new RolesGuard(makeReflector(['DELIVERY_PARTNER']), prisma);
     await expect(
       guard.canActivate(makeContext({ user: { role: 'DELIVERY_PARTNER', sub: 'u1' } })),
     ).resolves.toBe(true);
-    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it('forbids an already-issued JWT for a suspended DELIVERY_PARTNER', async () => {
+    const { prisma, partnerFindUnique } = makePrisma('ACTIVE', 'SUSPENDED');
+    const guard = new RolesGuard(makeReflector(['DELIVERY_PARTNER']), prisma);
+    await expect(
+      guard.canActivate(makeContext({ user: { role: 'DELIVERY_PARTNER', sub: 'u1' } })),
+    ).rejects.toThrow(ForbiddenException);
+    expect(partnerFindUnique).toHaveBeenCalled();
+  });
+
+  it('forbids a DELIVERY_PARTNER whose partner profile is missing', async () => {
+    const { prisma } = makePrisma('ACTIVE', null);
+    const guard = new RolesGuard(makeReflector(['DELIVERY_PARTNER']), prisma);
+    await expect(
+      guard.canActivate(makeContext({ user: { role: 'DELIVERY_PARTNER', sub: 'u1' } })),
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('keeps CUSTOMER behaviour unchanged (no account status check)', async () => {
