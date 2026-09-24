@@ -18,7 +18,7 @@ export class HealthService {
     const database = await this.checkDatabase();
 
     return {
-      status: 'ok',
+      status: database === 'connected' ? 'ok' : 'degraded',
       service,
       version: '0.1.0',
       uptimeSeconds: Math.round(process.uptime()),

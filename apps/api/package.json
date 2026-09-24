@@ -6,17 +6,21 @@
   "scripts": {
     "predev": "tsc -p ../../packages/shared/tsconfig.build.json",
     "dev": "nest start --watch",
-    "prebuild": "tsc -p ../../packages/shared/tsconfig.build.json",
+    "prebuild": "tsc -p ../../packages/shared/tsconfig.build.json && prisma generate",
     "build": "nest build",
-    "pretypecheck": "tsc -p ../../packages/shared/tsconfig.build.json",
+    "pretypecheck": "tsc -p ../../packages/shared/tsconfig.build.json && prisma generate",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.seed.json --noEmit",
     "lint": "eslint .",
+    "start:prod": "node dist/main.js",
     "test": "vitest run",
     "test:e2e": "vitest run test",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed"
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "provision:admin": "tsx scripts/provision-admin.ts",
+    "provision:branch": "tsx scripts/provision-branch.ts"
   },
   "dependencies": {
     "@hungrybox/shared": "*",

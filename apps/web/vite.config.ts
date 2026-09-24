@@ -9,7 +9,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': 'http://localhost:3000',
-      '/realtime': {
+      '/socket.io': {
         target: 'http://localhost:3000',
         ws: true,
         changeOrigin: true,

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 import type { AuthUser } from '@hungrybox/shared';
 import { authApi } from '../api/client';
+import { SESSION_EXPIRED_EVENT } from '../api/session-expiry';
 import { clearSession, loadSession, saveSession } from './session-storage';
 
 interface AuthContextValue {
@@ -45,6 +46,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      clearSession();
+      setUser(null);
+      setToken(null);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, []);
 
   const login = useCallback(async (loginId: string, password: string): Promise<AuthUser> => {

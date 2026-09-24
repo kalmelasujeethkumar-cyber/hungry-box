@@ -17,6 +17,7 @@
     "build": "npm run build --workspace @hungrybox/shared && npm run build --workspace @hungrybox/api && npm run build --workspace @hungrybox/web",
     "build:api": "npm run build --workspace @hungrybox/api",
     "build:web": "npm run build --workspace @hungrybox/web",
+    "start:api": "npm run start:prod --workspace @hungrybox/api",
     "typecheck": "npm run build --workspace @hungrybox/shared && npm run typecheck --workspace @hungrybox/api && npm run typecheck --workspace @hungrybox/web",
     "lint": "npm run lint --workspace @hungrybox/api && npm run lint --workspace @hungrybox/web",
     "test": "npm run test --workspace @hungrybox/api && npm run test --workspace @hungrybox/web",
@@ -27,7 +28,10 @@
     "db:generate": "npm run db:generate --workspace @hungrybox/api",
     "db:studio": "npm run db:studio --workspace @hungrybox/api",
     "db:migrate": "npm run db:migrate --workspace @hungrybox/api",
-    "db:seed": "npm run db:seed --workspace @hungrybox/api"
+    "db:deploy": "npm run db:deploy --workspace @hungrybox/api",
+    "db:seed": "npm run db:seed --workspace @hungrybox/api",
+    "provision:admin": "npm run provision:admin --workspace @hungrybox/api",
+    "provision:branch": "npm run provision:branch --workspace @hungrybox/api"
   },
   "devDependencies": {
     "prettier": "^3.9.8"

@@ -64,6 +64,7 @@ import type {
   VerifyPaymentResultDto,
 } from '@hungrybox/shared';
 import type { CatalogQueryDto } from './query';
+import { notifySessionExpired } from './session-expiry';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';
 
@@ -111,6 +112,9 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   if (!response.ok) {
+    if (response.status === 401 && options.token) {
+      notifySessionExpired();
+    }
     const { message, details } = await extractErrorPayload(response);
     throw new ApiError(message, response.status, details);
   }
@@ -140,6 +144,9 @@ export async function apiRequestText(
   }
 
   if (!response.ok) {
+    if (response.status === 401 && options.token) {
+      notifySessionExpired();
+    }
     const { message, details } = await extractErrorPayload(response);
     throw new ApiError(message, response.status, details);
   }

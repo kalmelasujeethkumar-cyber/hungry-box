@@ -1,4 +1,5 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import type { HealthReport } from '@hungrybox/shared';
 import { Public } from '../../common/decorators/public.decorator';
 import { HealthService } from './health.service';
@@ -9,7 +10,11 @@ export class HealthController {
 
   @Public()
   @Get()
-  getHealth(): Promise<HealthReport> {
-    return this.healthService.report();
+  async getHealth(@Res({ passthrough: true }) res: Response): Promise<HealthReport> {
+    const report = await this.healthService.report();
+    if (report.status !== 'ok') {
+      res.status(503);
+    }
+    return report;
   }
 }

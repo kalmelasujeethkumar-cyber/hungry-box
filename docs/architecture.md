@@ -511,6 +511,36 @@ plus explicit cancel windows, recorded as append-only `OrderEvent`rows and`*At` 
   tracking section refetches the REST tracking DTO when a delivery event arrives for that
   order (events for other orders are ignored); socket payloads are never trusted as data,
   so a desync heals on the next event or poll.
+- **2026-09 / ADR-031 Prisma generation is a single prebuild step:** `prisma generate`
+  runs in the API workspace's `prebuild`/`pretypecheck` (one generation point for both
+  `npm run build` and `npm run typecheck`); the generated client under `apps/api/src/generated`
+  is git-ignored and never committed, and schema changes are applied only through declared
+  `prisma migrate` commands (`migrate deploy` at deploy time). Delivered in Phase 9.
+- **2026-09 / ADR-032 Railway = workspace Nixpacks build + pre-deploy migrations + readiness:**
+  the single API service is configured in `railway.json` at the repo root: Nixpacks builder,
+  `npm run build` (workspace build → `dist/`), `startCommand "npm run start:api"` (compiled
+  `dist/main.js`), `preDeployCommand "npm run db:deploy"` (`prisma migrate deploy` against
+  `DATABASE_URL` before serving), and `healthcheckPath "/api/health"`. Node is pinned to 22
+  via `.nvmrc` + engines. Delivered in Phase 9.
+- **2026-09 / ADR-033 Operator-only provisioning over auto-bootstrap:** the initial
+  SUPER_ADMIN and the first branch are created by deliberate CLI commands
+  (`provision:admin`, `provision:branch`) from operator-provided environment variables —
+  never auto-bootstrapped, seeded, or hard-coded. Both utilities are idempotent and
+  refuse-by-default (an existing non-SUPER_ADMIN or inactive SUPER_ADMIN is never promoted/
+  reactivated; an existing branch code is never overwritten). Delivered in Phase 9.
+- **2026-09 / ADR-034 CORS fails fast and is shared across HTTP and Socket.IO:** one
+  `parseCorsOrigins` validator consumes `CORS_ORIGINS` for both the HTTP layer and the
+  `/socket.io` adapter; a wildcard (`*`) and any non-absolute `http(s)` entry throw at boot
+  rather than silently producing a broken or wide-open policy, and a single trailing slash
+  is normalized to match the browser `Origin` header. Delivered in Phase 9.
+- **2026-09 / ADR-035 Health semantics: 200 ok / 503 degraded:** `GET /api/health` returns
+  the `HealthReport` body with `status: 'ok'` (`database === 'connected'` → HTTP 200) or
+  `status: 'degraded'` (HTTP 503 via `@Res({ passthrough: true })`), so Railway's health
+  check reflects readiness; the payload never exposes `DATABASE_URL`, hostnames, or stack
+  traces, and `/api/health` is exempt from request logging. Delivered in Phase 9.
+- **2026-09 / ADR-036 Node 22 pinned for reproducible builds:** `.nvmrc` (`22`) plus the
+  existing `engines.node >=22` make the runtime deterministic across local dev, CI, and the
+  Railway Nixpacks build. Delivered in Phase 9.
 
 ---
 
@@ -567,3 +597,27 @@ reseed. Payment verification is exercised against the existing **development pay
 provider**; a production gateway remains deferred. Nothing was committed in Phase 8
 (baseline `c73f7b0`); see `docs/phase-8-report.md` for the delivery checklist and ADRs
 28–30 above for the decisions.
+
+## Phase 9 status (complete)
+
+Phase 9 (Deployment & Staging Readiness) is **shipped and verified** — repository-only, no
+deployment, no commits, no database mutation (baseline `0dd7f42`). It wires production
+commands (root `start:api`/`db:deploy`/`provision:*` → API workspace `start:prod`,
+`prisma migrate deploy`, `tsx` bootstrap CLIs), pins Node 22 (`.nvmrc` + engines), encodes
+the Railway API service in `railway.json` (Nixpacks workspace build, pre-deploy migration,
+`/api/health` readiness, replicas 1), and hardens deployment-sensitive seams: a single
+fail-fast CORS validator shared by HTTP and Socket.IO, `200 ok / 503 degraded` health
+semantics, payment-provider boot validation (dev provider rejected under
+`NODE_ENV=production`), graceful shutdown, minimal request logging, a corrected Vite
+`/socket.io` websocket proxy, and a frontend 401 → session-expiry path that clears the
+local session once so authenticated screens fall back to `/login` without redirect loops.
+
+Verified green: **API 332 passed / 5 skipped, Web 101 passed (+4)**, typecheck (incl.
+`tsconfig.seed.json` covering the new `scripts/`), lint, full build, Prettier on all Phase 9
+files, and `prisma validate`.
+
+Safeguards: provisioning CLIs are operator-only and refuse-by-default (no auto-bootstrap,
+no hard-coded credentials, no Guntur literals); only `.env.example` documentation changed
+(`.env*` untouched); no new dependencies. Note the `dev` payment provider must still be
+replaced with a real gateway before live payments, and the web frontend is built but not yet
+served by Railway. See `docs/phase-9-report.md` and ADRs 31–36 above.

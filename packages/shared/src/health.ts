@@ -1,7 +1,9 @@
 export type HealthDatabaseStatus = 'unconfigured' | 'connected' | 'unreachable';
 
+export type HealthStatus = 'ok' | 'degraded';
+
 export interface HealthReport {
-  status: 'ok';
+  status: HealthStatus;
   service: string;
   version: string;
   uptimeSeconds: number;

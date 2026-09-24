@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { parseCorsOrigins } from './common/config/cors';
 import { HungryBoxIoAdapter } from './modules/realtime/cors-io.adapter';
 
 async function bootstrap() {
@@ -10,6 +11,7 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const config = app.get(ConfigService);
 
   const apiPrefix = config.get<string>('API_PREFIX', 'api');
@@ -23,12 +25,7 @@ async function bootstrap() {
     }),
   );
 
-  const corsOrigins = config
-    .get<string>('CORS_ORIGINS', '')
-    .trim()
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
+  const corsOrigins = parseCorsOrigins(config.get<string>('CORS_ORIGINS', ''));
 
   if (corsOrigins.length > 0) {
     app.enableCors({
