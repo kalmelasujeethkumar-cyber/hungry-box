@@ -30,12 +30,19 @@ export default function CategoryChips(): JSX.Element | null {
                 type="button"
                 onClick={() => setCategory(active ? null : category.slug)}
                 aria-pressed={active}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
                   active
                     ? 'bg-brand-navy text-white'
                     : 'border border-slate-200 bg-white text-slate-700 hover:border-brand-teal hover:text-brand-teal'
                 }`}
               >
+                {category.imageUrl ? (
+                  <img
+                    src={category.imageUrl}
+                    alt=""
+                    className="h-5 w-5 rounded-full object-cover"
+                  />
+                ) : null}
                 {category.name}
               </button>
             </li>

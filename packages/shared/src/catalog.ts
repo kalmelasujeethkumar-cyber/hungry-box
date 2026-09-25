@@ -101,17 +101,8 @@ export interface SetProductStatusInput {
   status: CatalogStatus;
 }
 
-export interface CreateProductImageInput {
-  imageUrl: string;
-  altText?: string;
-  sortOrder?: number;
-  isPrimary?: boolean;
-}
-
-export interface UpdateProductImageInput {
-  altText?: string;
-  sortOrder?: number;
-  isPrimary?: boolean;
+export interface ReorderProductImagesInput {
+  orderedImageIds: string[];
 }
 
 export interface CategoryDto {
@@ -128,7 +119,6 @@ export interface CreateCategoryInput {
   name: string;
   slug?: string;
   description?: string;
-  imageUrl?: string;
   sortOrder?: number;
 }
 
@@ -136,7 +126,6 @@ export interface UpdateCategoryInput {
   name?: string;
   slug?: string;
   description?: string;
-  imageUrl?: string;
   sortOrder?: number;
   status?: CatalogStatus;
 }

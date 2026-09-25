@@ -1,12 +1,24 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { RequestUser } from '../../common/interfaces/request-user';
+import { MAX_PUBLIC_IMAGE_BYTES } from '../media/media-storage-provider.interface';
+import type { PublicImageFile } from '../media/media-storage-provider.interface';
 import { CreateProductDto } from './dto/create-product.dto';
-import { CreateProductImageDto } from './dto/create-product-image.dto';
+import { ReorderProductImagesDto } from './dto/reorder-product-images.dto';
 import { SetProductStatusDto } from './dto/set-product-status.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { UpdateProductImageDto } from './dto/update-product-image.dto';
 import { ProductActor, ProductsService } from './products.service';
 
 @Controller('products')
@@ -59,22 +71,26 @@ export class ProductsController {
 
   @Post(':id/images')
   @Roles('SUPER_ADMIN')
-  addImage(
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_PUBLIC_IMAGE_BYTES } }))
+  uploadImage(
     @CurrentUser() user: RequestUser,
     @Param('id') id: string,
-    @Body() dto: CreateProductImageDto,
+    @UploadedFile() file: PublicImageFile,
+    @Body('altText') altText?: string,
   ) {
-    return this.productsService.addImage(this.actor(user), id, dto);
+    return this.productsService.uploadImage(this.actor(user), id, file, altText);
   }
 
-  @Patch('images/:imageId')
+  @Patch('images/reorder')
   @Roles('SUPER_ADMIN')
-  updateImage(
-    @CurrentUser() user: RequestUser,
-    @Param('imageId') imageId: string,
-    @Body() dto: UpdateProductImageDto,
-  ) {
-    return this.productsService.updateImage(this.actor(user), imageId, dto);
+  reorderImages(@CurrentUser() user: RequestUser, @Body() dto: ReorderProductImagesDto) {
+    return this.productsService.reorderImages(this.actor(user), dto);
+  }
+
+  @Patch('images/:imageId/primary')
+  @Roles('SUPER_ADMIN')
+  setPrimaryImage(@CurrentUser() user: RequestUser, @Param('imageId') imageId: string) {
+    return this.productsService.setPrimaryImage(this.actor(user), imageId);
   }
 
   @Delete('images/:imageId')

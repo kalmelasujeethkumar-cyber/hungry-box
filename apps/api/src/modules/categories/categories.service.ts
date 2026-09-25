@@ -1,8 +1,21 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { CategoryDto, UserRole } from '@hungrybox/shared';
 import { Prisma, CatalogStatus } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditKinds, AuditService } from '../audit/audit.service';
+import { MEDIA_STORAGE_PROVIDER } from '../media/media-storage-provider.interface';
+import type {
+  MediaStorageProvider,
+  PublicImageFile,
+} from '../media/media-storage-provider.interface';
+import { validatePublicImage } from '../media/public-image-validator';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
@@ -65,6 +78,7 @@ export class CategoriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(MEDIA_STORAGE_PROVIDER) private readonly mediaStorage: MediaStorageProvider,
   ) {}
 
   async list(): Promise<CategoryDto[]> {
@@ -97,7 +111,6 @@ export class CategoriesService {
           name: dto.name,
           slug,
           description: dto.description ?? null,
-          imageUrl: dto.imageUrl ?? null,
           sortOrder: dto.sortOrder ?? 0,
         },
         select: categorySelect,
@@ -135,7 +148,6 @@ export class CategoriesService {
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.slug !== undefined) data.slug = dto.slug.trim() || slugify(dto.name ?? existing.name);
     if (dto.description !== undefined) data.description = dto.description;
-    if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
     if (dto.status !== undefined) data.status = dto.status;
 
@@ -166,5 +178,135 @@ export class CategoriesService {
     });
 
     return toCategoryDto(category);
+  }
+
+  async uploadImage(
+    actor: CategoryActor,
+    categoryId: string,
+    file: PublicImageFile,
+  ): Promise<CategoryDto> {
+    const db = this.prisma.requireClient();
+    validatePublicImage(file);
+
+    const current = await db.category.findUnique({
+      where: { id: categoryId },
+      select: { id: true, imagePublicId: true },
+    });
+    if (!current) {
+      throw new NotFoundException('Category not found');
+    }
+
+    const stored = await this.mediaStorage.uploadPublicImage({
+      buffer: file.buffer,
+      folder: `hungry-box/catalog/categories/${categoryId}`,
+      publicId: randomUUID(),
+    });
+
+    try {
+      await db.category.update({
+        where: { id: categoryId },
+        data: {
+          imageUrl: stored.secureUrl,
+          imagePublicId: stored.publicId,
+          imageResourceType: stored.resourceType,
+        },
+      });
+    } catch (error) {
+      await this.bestEffortDeleteAsset(
+        'category',
+        categoryId,
+        stored.publicId,
+        `Orphaned asset rejected after aborted category image upload`,
+      );
+      throw error;
+    }
+
+    if (current.imagePublicId) {
+      await this.bestEffortDeleteAsset(
+        'category',
+        categoryId,
+        current.imagePublicId,
+        `Failed to delete replaced category image asset (${categoryId})`,
+      );
+    }
+
+    await this.audit.record({
+      actorRole: actor.role,
+      actorId: actor.userId,
+      kind: current.imagePublicId
+        ? AuditKinds.CATEGORY_IMAGE_REPLACED
+        : AuditKinds.CATEGORY_IMAGE_UPLOADED,
+      entityType: 'category',
+      entityId: categoryId,
+      message: current.imagePublicId
+        ? `Category image replaced (${categoryId})`
+        : `Category image uploaded (${categoryId})`,
+    });
+
+    const category = await db.category.findUniqueOrThrow({
+      where: { id: categoryId },
+      select: categorySelect,
+    });
+    return toCategoryDto(category);
+  }
+
+  async removeImage(actor: CategoryActor, categoryId: string): Promise<CategoryDto> {
+    const db = this.prisma.requireClient();
+    const current = await db.category.findUnique({
+      where: { id: categoryId },
+      select: { id: true, imagePublicId: true },
+    });
+    if (!current) {
+      throw new NotFoundException('Category not found');
+    }
+    if (!current.imagePublicId) {
+      throw new BadRequestException('Category does not have an image');
+    }
+
+    await db.category.update({
+      where: { id: categoryId },
+      data: { imageUrl: null, imagePublicId: null, imageResourceType: null },
+    });
+
+    await this.bestEffortDeleteAsset(
+      'category',
+      categoryId,
+      current.imagePublicId,
+      `Failed to delete category image asset (${categoryId})`,
+    );
+
+    await this.audit.record({
+      actorRole: actor.role,
+      actorId: actor.userId,
+      kind: AuditKinds.CATEGORY_IMAGE_REMOVED,
+      entityType: 'category',
+      entityId: categoryId,
+      message: `Category image removed (${categoryId})`,
+    });
+
+    const category = await db.category.findUniqueOrThrow({
+      where: { id: categoryId },
+      select: categorySelect,
+    });
+    return toCategoryDto(category);
+  }
+
+  private async bestEffortDeleteAsset(
+    entityType: string,
+    entityId: string,
+    publicId: string,
+    message: string,
+  ): Promise<void> {
+    try {
+      await this.mediaStorage.deletePublicImage(publicId);
+    } catch {
+      await this.audit.record({
+        actorRole: 'SYSTEM',
+        kind: AuditKinds.MEDIA_CLEANUP_FAILED,
+        entityType,
+        entityId,
+        message,
+      });
+    }
   }
 }

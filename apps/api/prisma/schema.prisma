@@ -170,16 +170,18 @@ model Branch {
 }
 
 model Category {
-  id          String         @id @default(cuid())
-  name        String
-  slug        String         @unique
-  description String?
-  imageUrl    String?
-  status      CatalogStatus  @default(ACTIVE)
-  sortOrder   Int            @default(0)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  products    Product[]
+  id                 String         @id @default(cuid())
+  name               String
+  slug               String         @unique
+  description        String?
+  imageUrl           String?
+  imagePublicId      String?
+  imageResourceType  String?
+  status             CatalogStatus  @default(ACTIVE)
+  sortOrder          Int            @default(0)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  products           Product[]
 
   @@index([status])
 }
@@ -202,14 +204,16 @@ model Product {
 }
 
 model ProductImage {
-  id        String  @id @default(cuid())
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  imageUrl  String
-  altText   String?
-  sortOrder Int     @default(0)
-  isPrimary Boolean @default(false)
-  createdAt DateTime @default(now())
+  id               String   @id @default(cuid())
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id])
+  imageUrl         String
+  providerPublicId String?
+  resourceType     String?
+  altText          String?
+  sortOrder        Int      @default(0)
+  isPrimary        Boolean  @default(false)
+  createdAt        DateTime @default(now())
 
   @@index([productId])
 }

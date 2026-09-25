@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,11 +11,16 @@ import { Prisma, CatalogStatus } from '../../generated/prisma/client';
 import type { PrismaClient } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditKinds, AuditService } from '../audit/audit.service';
+import { MEDIA_STORAGE_PROVIDER } from '../media/media-storage-provider.interface';
+import type {
+  MediaStorageProvider,
+  PublicImageFile,
+} from '../media/media-storage-provider.interface';
+import { validatePublicImage } from '../media/public-image-validator';
 import { CreateProductDto } from './dto/create-product.dto';
-import { CreateProductImageDto } from './dto/create-product-image.dto';
+import { ReorderProductImagesDto } from './dto/reorder-product-images.dto';
 import { SetProductStatusDto } from './dto/set-product-status.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { UpdateProductImageDto } from './dto/update-product-image.dto';
 import {
   ProductAdminRow,
   ProductDetail,
@@ -23,6 +30,8 @@ import {
   toGlobalProductDetail,
   toGlobalProductListItem,
 } from './product.mapper';
+
+export const MAX_PRODUCT_IMAGES = 3;
 
 export interface ProductActor {
   role: UserRole;
@@ -35,6 +44,7 @@ export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(MEDIA_STORAGE_PROVIDER) private readonly mediaStorage: MediaStorageProvider,
   ) {}
 
   async list(): Promise<ProductSummary[]> {
@@ -228,94 +238,169 @@ export class ProductsService {
     return toGlobalProductDetail(updated as unknown as ProductAdminRow);
   }
 
-  async addImage(
+  async uploadImage(
     actor: ProductActor,
     productId: string,
-    dto: CreateProductImageDto,
+    file: PublicImageFile,
+    altText?: string | null,
   ): Promise<GlobalProductDetailDto> {
     const db = this.prisma.requireClient();
+    validatePublicImage(file);
+    const alt = altText?.trim() ? altText.trim().slice(0, 500) : null;
 
-    await db.$transaction(async (tx) => {
-      const product = await tx.product.findUnique({
-        where: { id: productId },
-        select: { id: true, name: true },
-      });
-      if (!product) {
-        throw new NotFoundException('Product not found');
-      }
-
-      const imageCount = await tx.productImage.count({ where: { productId } });
-      const isPrimary = dto.isPrimary ?? imageCount === 0;
-
-      if (isPrimary) {
-        await tx.productImage.updateMany({
-          where: { productId, isPrimary: true },
-          data: { isPrimary: false },
-        });
-      }
-      await tx.productImage.create({
-        data: {
-          productId,
-          imageUrl: dto.imageUrl,
-          altText: dto.altText ?? null,
-          sortOrder: dto.sortOrder ?? imageCount,
-          isPrimary,
-        },
-      });
+    const stored = await this.mediaStorage.uploadPublicImage({
+      buffer: file.buffer,
+      folder: `hungry-box/catalog/products/${productId}`,
+      publicId: randomUUID(),
     });
+
+    let persisted: { id: string; productId: string };
+    try {
+      persisted = await db.$transaction(async (tx) => {
+        const product = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "Product" WHERE id = ${productId} FOR UPDATE
+        `;
+        if (product.length === 0) {
+          throw new NotFoundException('Product not found');
+        }
+        const count = await tx.productImage.count({ where: { productId } });
+        if (count >= MAX_PRODUCT_IMAGES) {
+          throw new BadRequestException(`A product can have at most ${MAX_PRODUCT_IMAGES} images`);
+        }
+        return tx.productImage.create({
+          data: {
+            productId,
+            imageUrl: stored.secureUrl,
+            providerPublicId: stored.publicId,
+            resourceType: stored.resourceType,
+            altText: alt,
+            sortOrder: count,
+            isPrimary: count === 0,
+          },
+          select: { id: true, productId: true },
+        });
+      });
+    } catch (error) {
+      await this.bestEffortDeleteAsset(
+        'product_image',
+        productId,
+        stored.publicId,
+        `Orphaned asset rejected after aborted product image upload`,
+      );
+      throw error;
+    }
 
     await this.audit.record({
       actorRole: actor.role,
       actorId: actor.userId,
-      kind: AuditKinds.PRODUCT_IMAGE_ADDED,
+      kind: AuditKinds.PRODUCT_IMAGE_UPLOADED,
       entityType: 'product_image',
-      entityId: productId,
-      message: `Image added to product ${productId}`,
+      entityId: persisted.id,
+      message: `Image uploaded to product ${productId}`,
     });
 
     const row = await this.findAdminRow(db, productId);
     return toGlobalProductDetail(row as unknown as ProductAdminRow);
   }
 
-  async updateImage(
-    actor: ProductActor,
-    imageId: string,
-    dto: UpdateProductImageDto,
-  ): Promise<GlobalProductDetailDto> {
+  async setPrimaryImage(actor: ProductActor, imageId: string): Promise<GlobalProductDetailDto> {
     const db = this.prisma.requireClient();
 
     const productId = await db.$transaction(async (tx) => {
       const image = await tx.productImage.findUnique({
         where: { id: imageId },
-        select: { productId: true },
+        select: { productId: true, isPrimary: true },
       });
       if (!image) {
         throw new NotFoundException('Image not found');
       }
-      if (dto.isPrimary) {
+      if (!image.isPrimary) {
         await tx.productImage.updateMany({
-          where: { productId: image.productId, isPrimary: true, NOT: { id: imageId } },
+          where: { productId: image.productId, isPrimary: true },
           data: { isPrimary: false },
         });
+        await tx.productImage.update({ where: { id: imageId }, data: { isPrimary: true } });
       }
-      await tx.productImage.update({
-        where: { id: imageId },
-        data: {
-          altText: dto.altText,
-          sortOrder: dto.sortOrder,
-          isPrimary: dto.isPrimary,
-        },
-      });
       return image.productId;
     });
 
     await this.audit.record({
       actorRole: actor.role,
       actorId: actor.userId,
-      kind: AuditKinds.PRODUCT_IMAGE_UPDATED,
+      kind: AuditKinds.PRODUCT_IMAGE_PRIMARY_CHANGED,
       entityType: 'product_image',
       entityId: imageId,
-      message: `Image updated for product ${productId}`,
+      message: `Primary image changed for product ${productId}`,
+    });
+
+    const row = await this.findAdminRow(db, productId);
+    return toGlobalProductDetail(row as unknown as ProductAdminRow);
+  }
+
+  async reorderImages(
+    actor: ProductActor,
+    dto: ReorderProductImagesDto,
+  ): Promise<GlobalProductDetailDto> {
+    const db = this.prisma.requireClient();
+    const { orderedImageIds } = dto;
+
+    const productId = await db.$transaction(async (tx) => {
+      const productIds = new Set(
+        (
+          await tx.productImage.findMany({
+            where: { id: { in: orderedImageIds } },
+            select: { productId: true },
+          })
+        ).map((image) => image.productId),
+      );
+      if (productIds.size !== 1) {
+        throw new BadRequestException('All images must belong to the same product and exist');
+      }
+      const [product] = productIds;
+
+      const existing = await tx.productImage.findMany({
+        where: { productId: product },
+        select: { id: true },
+      });
+      const existingIds = existing.map((image) => image.id).sort();
+      const expectedIds = [...orderedImageIds].sort();
+      if (
+        existingIds.length !== expectedIds.length ||
+        existingIds.some((id, index) => id !== expectedIds[index])
+      ) {
+        throw new BadRequestException('orderedImageIds must include every image of the product');
+      }
+
+      for (let index = 0; index < orderedImageIds.length; index += 1) {
+        await tx.productImage.update({
+          where: { id: orderedImageIds[index] },
+          data: { sortOrder: index },
+        });
+      }
+
+      const primaryCount = await tx.productImage.count({
+        where: { productId: product, isPrimary: true },
+      });
+      if (primaryCount !== 1) {
+        await tx.productImage.updateMany({
+          where: { productId: product, isPrimary: true },
+          data: { isPrimary: false },
+        });
+        await tx.productImage.update({
+          where: { id: orderedImageIds[0] },
+          data: { isPrimary: true },
+        });
+      }
+      return product;
+    });
+
+    await this.audit.record({
+      actorRole: actor.role,
+      actorId: actor.userId,
+      kind: AuditKinds.PRODUCT_IMAGES_REORDERED,
+      entityType: 'product_image',
+      entityId: productId,
+      message: `Product ${productId} images reordered`,
     });
 
     const row = await this.findAdminRow(db, productId);
@@ -325,10 +410,10 @@ export class ProductsService {
   async removeImage(actor: ProductActor, imageId: string): Promise<GlobalProductDetailDto> {
     const db = this.prisma.requireClient();
 
-    const productId = await db.$transaction(async (tx) => {
+    const removed = await db.$transaction(async (tx) => {
       const image = await tx.productImage.findUnique({
         where: { id: imageId },
-        select: { productId: true, isPrimary: true },
+        select: { productId: true, isPrimary: true, providerPublicId: true },
       });
       if (!image) {
         throw new NotFoundException('Image not found');
@@ -344,8 +429,17 @@ export class ProductsService {
           await tx.productImage.update({ where: { id: next.id }, data: { isPrimary: true } });
         }
       }
-      return image.productId;
+      return { productId: image.productId, providerPublicId: image.providerPublicId };
     });
+
+    if (removed.providerPublicId) {
+      await this.bestEffortDeleteAsset(
+        'product_image',
+        imageId,
+        removed.providerPublicId,
+        `Failed to delete product image asset (${imageId})`,
+      );
+    }
 
     await this.audit.record({
       actorRole: actor.role,
@@ -353,10 +447,10 @@ export class ProductsService {
       kind: AuditKinds.PRODUCT_IMAGE_REMOVED,
       entityType: 'product_image',
       entityId: imageId,
-      message: `Image removed from product ${productId}`,
+      message: `Image removed from product ${removed.productId}`,
     });
 
-    const row = await this.findAdminRow(db, productId);
+    const row = await this.findAdminRow(db, removed.productId);
     return toGlobalProductDetail(row as unknown as ProductAdminRow);
   }
 
@@ -366,6 +460,25 @@ export class ProductsService {
       throw new NotFoundException('Product not found');
     }
     return row;
+  }
+
+  private async bestEffortDeleteAsset(
+    entityType: string,
+    entityId: string,
+    publicId: string,
+    message: string,
+  ): Promise<void> {
+    try {
+      await this.mediaStorage.deletePublicImage(publicId);
+    } catch {
+      await this.audit.record({
+        actorRole: 'SYSTEM',
+        kind: AuditKinds.MEDIA_CLEANUP_FAILED,
+        entityType,
+        entityId,
+        message,
+      });
+    }
   }
 
   private async requireActiveCategory(db: PrismaClient, categoryId: string) {

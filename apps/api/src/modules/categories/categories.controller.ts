@@ -1,7 +1,20 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { RequestUser } from '../../common/interfaces/request-user';
+import { MAX_PUBLIC_IMAGE_BYTES } from '../media/media-storage-provider.interface';
+import type { PublicImageFile } from '../media/media-storage-provider.interface';
 import { CategoriesService, CategoryActor } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -35,6 +48,23 @@ export class CategoriesController {
     @Body() dto: UpdateCategoryDto,
   ) {
     return this.categoriesService.update(this.actor(user), id, dto);
+  }
+
+  @Post(':id/image')
+  @Roles('SUPER_ADMIN')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_PUBLIC_IMAGE_BYTES } }))
+  uploadImage(
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @UploadedFile() file: PublicImageFile,
+  ) {
+    return this.categoriesService.uploadImage(this.actor(user), id, file);
+  }
+
+  @Delete(':id/image')
+  @Roles('SUPER_ADMIN')
+  removeImage(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.categoriesService.removeImage(this.actor(user), id);
   }
 
   private actor(user: RequestUser): CategoryActor {

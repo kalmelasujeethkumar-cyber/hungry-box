@@ -32,7 +32,13 @@ const MOCK_AUTH = vi.hoisted(() => ({
 }));
 
 const MOCK_APIS = vi.hoisted(() => ({
-  branchOrdersApi: { list: vi.fn(), get: vi.fn(), advanceStatus: vi.fn(), cancel: vi.fn(), collectCod: vi.fn() },
+  branchOrdersApi: {
+    list: vi.fn(),
+    get: vi.fn(),
+    advanceStatus: vi.fn(),
+    cancel: vi.fn(),
+    collectCod: vi.fn(),
+  },
   branchProductsApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), deactivate: vi.fn() },
   branchSettingsApi: { get: vi.fn(), update: vi.fn() },
   branchAuditApi: { list: vi.fn(), exportCsv: vi.fn() },
@@ -333,7 +339,10 @@ describe('manager orders', () => {
     await user.click(screen.getByRole('button', { name: 'Cash collected — record it' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Record cash collection' });
-    await user.type(within(dialog).getByPlaceholderText(/Reason \(required\)/), 'Cash received in hand');
+    await user.type(
+      within(dialog).getByPlaceholderText(/Reason \(required\)/),
+      'Cash received in hand',
+    );
     await user.click(within(dialog).getByRole('button', { name: 'Mark as collected' }));
 
     await waitFor(() =>
@@ -409,6 +418,26 @@ describe('manager catalogue', () => {
     await waitFor(() =>
       expect(MOCK_APIS.branchProductsApi.deactivate).toHaveBeenCalledWith('bp-1', 'test-token'),
     );
+  });
+
+  it('never exposes global media controls to a branch manager', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ManagerCatalogPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Chicken Biryani');
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await screen.findByRole('dialog');
+
+    expect(screen.queryByLabelText('Choose product image')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Choose category image')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Upload image' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Make primary' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Move up|Move down/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove image' })).not.toBeInTheDocument();
   });
 });
 

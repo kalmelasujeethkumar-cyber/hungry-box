@@ -20,11 +20,6 @@ export class CreateCategoryDto implements CreateCategoryInput {
   description?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  imageUrl?: string;
-
-  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)

@@ -1,5 +1,5 @@
 import type { JSX, ReactNode } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   CatalogStatus,
   CategoryDto,
@@ -31,6 +31,24 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 120);
+}
+
+const MAX_PRODUCT_IMAGES = 3;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+function imageFileError(file: File): string | null {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    return 'Choose a JPEG, PNG or WebP image.';
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return 'Image must be 5 MB or smaller.';
+  }
+  return null;
+}
+
+function sortImagesByOrder(images: ProductImageDto[]): ProductImageDto[] {
+  return [...images].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 function StatusBadge({ status }: { status: CatalogStatus }): JSX.Element {
@@ -110,10 +128,15 @@ export default function AdminCataloguePage(): JSX.Element {
     categoryId: '',
   });
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState('');
   const [imageAlt, setImageAlt] = useState('');
   const [imageBusy, setImageBusy] = useState(false);
   const [removeImage, setRemoveImage] = useState<ProductImageDto | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+
+  const [categoryImageFile, setCategoryImageFile] = useState<File | null>(null);
+  const [categoryImageBusy, setCategoryImageBusy] = useState(false);
+  const categoryFileInputRef = useRef<HTMLInputElement>(null);
 
   const [toggleProduct, setToggleProduct] = useState<GlobalProductListItemDto | null>(null);
 
@@ -221,7 +244,7 @@ export default function AdminCataloguePage(): JSX.Element {
     setDetail(null);
     setEditLoading(true);
     setDetailError(null);
-    setImageUrl('');
+    setImageFile(null);
     setImageAlt('');
     setError(null);
     setSuccess(null);
@@ -295,7 +318,7 @@ export default function AdminCataloguePage(): JSX.Element {
     setImageBusy(true);
     setDetailError(null);
     productsApi
-      .updateImage(image.id, { isPrimary: true }, token)
+      .setPrimaryImage(image.id, token)
       .then((updated) => {
         setDetail(updated);
         refreshProducts();
@@ -323,25 +346,52 @@ export default function AdminCataloguePage(): JSX.Element {
       .finally(() => setImageBusy(false));
   };
 
-  const submitAddImage = (): void => {
+  const submitUploadImage = (): void => {
     if (!token || !editing) return;
-    const url = imageUrl.trim();
-    if (!url) {
-      setDetailError('Image URL is required.');
+    if (!imageFile) {
+      setDetailError('Choose an image to upload.');
+      return;
+    }
+    const validationError = imageFileError(imageFile);
+    if (validationError) {
+      setDetailError(validationError);
+      setImageFile(null);
       return;
     }
     setImageBusy(true);
     setDetailError(null);
     productsApi
-      .addImage(editing.id, { imageUrl: url, altText: imageAlt.trim() || undefined }, token)
+      .uploadImage(editing.id, imageFile, imageAlt.trim() || undefined, token)
       .then((updated) => {
         setDetail(updated);
-        setImageUrl('');
+        setImageFile(null);
         setImageAlt('');
         refreshProducts();
       })
       .catch((err: unknown) => {
-        setDetailError(err instanceof Error ? err.message : 'Could not add the image.');
+        setDetailError(err instanceof Error ? err.message : 'Could not upload the image.');
+      })
+      .finally(() => setImageBusy(false));
+  };
+
+  const submitReorderImage = (image: ProductImageDto, direction: -1 | 1): void => {
+    if (!token || !editing || !detail) return;
+    const ordered = sortImagesByOrder(detail.images);
+    const index = ordered.findIndex((entry) => entry.id === image.id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= ordered.length) return;
+    const reordered = [...ordered];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setImageBusy(true);
+    setDetailError(null);
+    productsApi
+      .reorderImages({ orderedImageIds: reordered.map((entry) => entry.id) }, token)
+      .then((updated) => {
+        setDetail(updated);
+        refreshProducts();
+      })
+      .catch((err: unknown) => {
+        setDetailError(err instanceof Error ? err.message : 'Could not reorder the images.');
       })
       .finally(() => setImageBusy(false));
   };
@@ -384,6 +434,7 @@ export default function AdminCataloguePage(): JSX.Element {
       description: category.description ?? '',
       sortOrder: String(category.sortOrder),
     });
+    setCategoryImageFile(null);
     setError(null);
     setSuccess(null);
     setCategoryModal({ mode: 'edit', category });
@@ -433,6 +484,51 @@ export default function AdminCataloguePage(): JSX.Element {
         setError(err instanceof Error ? err.message : 'Could not save the category.');
       })
       .finally(() => setCategorySaving(false));
+  };
+
+  const submitCategoryImage = (): void => {
+    if (!token || categoryModal?.mode !== 'edit') return;
+    if (!categoryImageFile) {
+      setError('Choose an image to upload.');
+      return;
+    }
+    const validationError = imageFileError(categoryImageFile);
+    if (validationError) {
+      setError(validationError);
+      setCategoryImageFile(null);
+      return;
+    }
+    setCategoryImageBusy(true);
+    setError(null);
+    const categoryId = categoryModal.category.id;
+    categoriesApi
+      .uploadImage(categoryId, categoryImageFile, token)
+      .then((updated) => {
+        setCategoryModal({ mode: 'edit', category: updated });
+        setCategoryImageFile(null);
+        refreshCategories();
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Could not upload the image.');
+      })
+      .finally(() => setCategoryImageBusy(false));
+  };
+
+  const submitRemoveCategoryImage = (): void => {
+    if (!token || categoryModal?.mode !== 'edit') return;
+    setCategoryImageBusy(true);
+    setError(null);
+    const categoryId = categoryModal.category.id;
+    categoriesApi
+      .removeImage(categoryId, token)
+      .then((updated) => {
+        setCategoryModal({ mode: 'edit', category: updated });
+        refreshCategories();
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Could not remove the image.');
+      })
+      .finally(() => setCategoryImageBusy(false));
   };
 
   const setCategoryStatus = (category: CategoryDto, status: CatalogStatus): void => {
@@ -612,20 +708,29 @@ export default function AdminCataloguePage(): JSX.Element {
                   key={category.id}
                   className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-bold text-brand-navy">{category.name}</p>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-                        {category.sortOrder}
-                      </span>
-                      <StatusBadge status={category.status} />
-                    </div>
-                    <p className="mt-0.5 truncate font-mono text-xs text-slate-500">
-                      /{category.slug}
-                    </p>
-                    {category.description ? (
-                      <p className="mt-1 text-sm text-slate-600">{category.description}</p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    {category.imageUrl ? (
+                      <img
+                        src={category.imageUrl}
+                        alt={category.name}
+                        className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                      />
                     ) : null}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-bold text-brand-navy">{category.name}</p>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                          {category.sortOrder}
+                        </span>
+                        <StatusBadge status={category.status} />
+                      </div>
+                      <p className="mt-0.5 truncate font-mono text-xs text-slate-500">
+                        /{category.slug}
+                      </p>
+                      {category.description ? (
+                        <p className="mt-1 text-sm text-slate-600">{category.description}</p>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <button
@@ -814,82 +919,117 @@ export default function AdminCataloguePage(): JSX.Element {
                 <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">
                   Product images
                 </h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  {detail.images.length} of {MAX_PRODUCT_IMAGES} images — JPEG, PNG or WebP, up to 5
+                  MB each.
+                </p>
                 {detail.images.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-500">No images yet.</p>
                 ) : (
                   <ul className="mt-2 space-y-2">
-                    {[...detail.images]
-                      .sort((a, b) => a.sortOrder - b.sortOrder)
-                      .map((image) => (
-                        <li
-                          key={image.id}
-                          className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
-                        >
-                          <img
-                            src={image.imageUrl}
-                            alt={image.altText ?? ''}
-                            className="h-12 w-12 shrink-0 rounded-lg object-cover"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm text-slate-600">
-                              {image.altText ?? '—'}
-                            </p>
-                            {image.isPrimary ? (
-                              <span className="mt-1 inline-block rounded-full bg-brand-teal px-2 py-0.5 text-xs font-bold text-white">
-                                Primary
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="flex shrink-0 gap-2">
-                            {!image.isPrimary ? (
-                              <button
-                                type="button"
-                                onClick={() => submitMakePrimary(image)}
-                                disabled={imageBusy}
-                                className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
-                              >
-                                Make primary
-                              </button>
-                            ) : null}
+                    {sortImagesByOrder(detail.images).map((image, index) => (
+                      <li
+                        key={image.id}
+                        className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
+                      >
+                        <img
+                          src={image.imageUrl}
+                          alt={image.altText ?? ''}
+                          className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm text-slate-600">{image.altText ?? '—'}</p>
+                          {image.isPrimary ? (
+                            <span className="mt-1 inline-block rounded-full bg-brand-teal px-2 py-0.5 text-xs font-bold text-white">
+                              Primary
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => submitReorderImage(image, -1)}
+                            disabled={imageBusy || index === 0}
+                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-40"
+                          >
+                            Move up
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => submitReorderImage(image, 1)}
+                            disabled={
+                              imageBusy || index === sortImagesByOrder(detail.images).length - 1
+                            }
+                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-40"
+                          >
+                            Move down
+                          </button>
+                          {!image.isPrimary ? (
                             <button
                               type="button"
-                              onClick={() => setRemoveImage(image)}
+                              onClick={() => submitMakePrimary(image)}
                               disabled={imageBusy}
-                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
                             >
-                              <TrashIcon className="h-3.5 w-3.5" />
-                              Remove
+                              Make primary
                             </button>
-                          </div>
-                        </li>
-                      ))}
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setRemoveImage(image)}
+                            disabled={imageBusy}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            <TrashIcon className="h-3.5 w-3.5" />
+                            Remove
+                          </button>
+                        </div>
+                      </li>
+                    ))}
                   </ul>
                 )}
 
-                <div className="mt-4 space-y-2">
-                  <input
-                    value={imageUrl}
-                    onChange={(event) => setImageUrl(event.target.value)}
-                    placeholder="https://image-url"
-                    aria-label="Image URL"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                  <input
-                    value={imageAlt}
-                    onChange={(event) => setImageAlt(event.target.value)}
-                    placeholder="Alt text (optional)"
-                    aria-label="Alt text"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={submitAddImage}
-                    disabled={imageBusy}
-                    className="rounded-lg bg-brand-teal px-3 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-50"
-                  >
-                    Add image
-                  </button>
-                </div>
+                {detail.images.length >= MAX_PRODUCT_IMAGES ? (
+                  <p className="mt-4 text-sm font-semibold text-brand-navy">
+                    Maximum of {MAX_PRODUCT_IMAGES} images reached.
+                  </p>
+                ) : (
+                  <div className="mt-4 space-y-2">
+                    <input
+                      ref={imageFileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      aria-label="Choose product image"
+                      className="hidden"
+                      onChange={(event) => {
+                        setImageFile(event.target.files?.[0] ?? null);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => imageFileInputRef.current?.click()}
+                      disabled={imageBusy}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
+                    >
+                      {imageFile ? `Selected: ${imageFile.name}` : 'Choose image…'}
+                    </button>
+                    <input
+                      value={imageAlt}
+                      onChange={(event) => setImageAlt(event.target.value)}
+                      placeholder="Alt text (optional)"
+                      aria-label="Alt text"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={submitUploadImage}
+                      disabled={imageBusy || !imageFile}
+                      className="rounded-lg bg-brand-teal px-3 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-50"
+                    >
+                      Upload image
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           ) : (
@@ -904,7 +1044,7 @@ export default function AdminCataloguePage(): JSX.Element {
             categoryModal.mode === 'create' ? 'Add category' : `Edit ${categoryModal.category.name}`
           }
           onClose={() => {
-            if (!categorySaving) setCategoryModal(null);
+            if (!categorySaving && !categoryImageBusy) setCategoryModal(null);
           }}
         >
           {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
@@ -948,11 +1088,71 @@ export default function AdminCataloguePage(): JSX.Element {
               />
             </label>
           </div>
+          {categoryModal.mode === 'edit' ? (
+            <div className="mt-5 border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+                Category image
+              </h3>
+              <p className="mt-1 text-xs text-slate-400">JPEG, PNG or WebP, up to 5 MB.</p>
+              <div className="mt-3 flex items-center gap-3">
+                {categoryModal.category.imageUrl ? (
+                  <>
+                    <img
+                      src={categoryModal.category.imageUrl}
+                      alt={categoryModal.category.name}
+                      className="h-16 w-16 shrink-0 rounded-lg object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={submitRemoveCategoryImage}
+                      disabled={categoryImageBusy}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                      Remove image
+                    </button>
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-500">No image yet.</p>
+                )}
+              </div>
+              <div className="mt-3 space-y-2">
+                <input
+                  ref={categoryFileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  aria-label="Choose category image"
+                  className="hidden"
+                  onChange={(event) => {
+                    setCategoryImageFile(event.target.files?.[0] ?? null);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => categoryFileInputRef.current?.click()}
+                  disabled={categoryImageBusy}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
+                >
+                  {categoryImageFile
+                    ? `Selected: ${categoryImageFile.name}`
+                    : 'Upload / replace image…'}
+                </button>
+                <button
+                  type="button"
+                  onClick={submitCategoryImage}
+                  disabled={categoryImageBusy || !categoryImageFile}
+                  className="rounded-lg bg-brand-teal px-3 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-50"
+                >
+                  Upload image
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="mt-6 flex gap-3">
             <button
               type="button"
               onClick={() => setCategoryModal(null)}
-              disabled={categorySaving}
+              disabled={categorySaving || categoryImageBusy}
               className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
             >
               Cancel
@@ -960,7 +1160,7 @@ export default function AdminCataloguePage(): JSX.Element {
             <button
               type="button"
               onClick={submitCategory}
-              disabled={categorySaving}
+              disabled={categorySaving || categoryImageBusy}
               className="flex-1 rounded-lg bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange/90 disabled:opacity-50"
             >
               {categoryModal.mode === 'create' ? 'Add category' : 'Save changes'}

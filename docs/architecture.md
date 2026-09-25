@@ -541,6 +541,29 @@ plus explicit cancel windows, recorded as append-only `OrderEvent`rows and`*At` 
 - **2026-09 / ADR-036 Node 22 pinned for reproducible builds:** `.nvmrc` (`22`) plus the
   existing `engines.node >=22` make the runtime deterministic across local dev, CI, and the
   Railway Nixpacks build. Delivered in Phase 9.
+- **2026-09 / ADR-043 Media storage is a provider abstraction behind a symbol, not a hard
+  dependency:** `MEDIA_STORAGE_PROVIDER` + `MediaStorageProvider` keep Cloudinary an
+  implementation detail; `resolveMediaStorageProvider(config)` selects Cloudinary only when
+  all three credentials are present, else an unavailable provider that 503s. The API boots
+  and the storefront works without media configured. Delivered in Phase 10C.
+- **2026-09 / ADR-044 Image validation is magic-byte based, size-capped server-side:**
+  `mimetype`/`ext` are attacker-influenceable, so actual byte signatures (JPEG/PNG/WebP)
+  gate everything, a 5 MB cap bounds file memory, and SVG is excluded (script-bearing
+  vector polyglots). Limits are mirrored client-side only as UX. Delivered in Phase 10C.
+- **2026-09 / ADR-045 Max-3 product images enforced with FOR UPDATE + transaction
+  normalization:** the count check runs under an explicit product row lock so concurrent
+  uploads cannot exceed the cap; primary is derived (first image auto-primary, reorder and
+  removal normalize back to exactly one). Delivered in Phase 10C.
+- **2026-09 / ADR-046 Remote delete is always best-effort after the DB write, never
+  before:** the database stays the source of truth for what customers see; rows/columns are
+  updated first, then the cloud asset is deleted, and a failed delete surfaces as a `SYSTEM`
+  `MEDIA_CLEANUP_FAILED` audit instead of breaking the request. The orphan case (upload
+  succeeded, DB write failed) also cleans up best-effort. Delivered in Phase 10C.
+- **2026-09 / ADR-047 Customers receive optimized secure URLs, never raw uploads or storage
+  keys:** `secureUrl` is built at upload time via `cloudinary.url(public_id, { secure:
+true, width: 800, crop: 'limit', f_auto, q_auto })`; `providerPublicId`/`resourceType`
+  stay server-internal and out of shared contracts and audit payloads. Delivered in
+  Phase 10C.
 
 ---
 
@@ -630,6 +653,7 @@ the order (`POST /orders/cod`, idempotent via `idempotencyKey`) and never touche
 payment-intent/provider layer; a COD order is security-boundary-excluded from online
 gateways by construction (no intent, no verification). Cash is collected in two audited
 paths:
+
 - Delivery partner completes delivery with `cashCollected: true`
   (`deliver(assignmentId, token, cashCollected)`) → payment `PAID` (`collectedAt`,
   `collectedByRole='DELIVERY_PARTNER'`, `collectedById`) + order `PAID` in one transaction;
@@ -652,7 +676,37 @@ enforcement on multiple COD rows (see ADR-042).
 Verified green: **API 345 passed / 5 skipped (40 files), Web 109 passed (16 files)**,
 typecheck, lint, full build, and `prisma validate`. The migration
 `20260924184622_phase6_cash_on_delivery` was applied with the safe `migrate dev --create-only`
-+ `prisma migrate deploy` flow (it also folds in the previously-unmigrated `AuditEvent`
-branch `FK` and the `PartnerIdCounter` default; see ADR-041). `migration_lock.toml` is now
-present. Nothing committed in Phase 10B (baseline `cc0c5fa`); see
-`docs/phase-10b-report.md` and ADRs 41–42.
+
+- `prisma migrate deploy` flow (it also folds in the previously-unmigrated `AuditEvent`
+  branch `FK` and the `PartnerIdCounter` default; see ADR-041). `migration_lock.toml` is now
+  present. Nothing committed in Phase 10B (baseline `cc0c5fa`); see
+  `docs/phase-10b-report.md` and ADRs 41–42.
+
+## Phase 10C status (complete)
+
+Phase 10C (public catalog media) is **shipped and verified**. SUPER_ADMIN uploads up to
+**3 images per product** (primary, reorder, alt text, remove) and **one image per category**
+(upload/replace/remove), served to customers as optimized, secure Cloudinary URLs from the
+read-only storefront. Storage goes through the `MediaStorageProvider` abstraction
+(`MEDIA_STORAGE_PROVIDER` symbol; ADR-043) with `resolveMediaStorageProvider(config)`
+choosing Cloudinary when `CLOUDINARY_*` credentials are all set, else an unavailable provider
+(503, never a boot failure). Uploads are magic-byte validated JPEG/PNG/WebP ≤ 5 MB
+(ADR-044); the product cap and single-primary invariant are enforced under a `FOR UPDATE`
+lock with reorder/removal normalization (ADR-045); remote assets are always deleted
+best-effort **after** the DB write with `MEDIA_CLEANUP_FAILED` SYSTEM audits otherwise, and
+orphaned uploads are cleaned up when the DB write fails (ADR-046); customers receive
+`cloudinary.url(public_id, { secure: true, width: 800, crop: 'limit', f_auto, q_auto })`
+URLs only — no storage keys or transformation knowledge (ADR-047).
+
+`ProductImage` gains `providerPublicId` + `resourceType`; `Category` gains `imagePublicId` +
+`imageResourceType`; audit kinds are extended
+(`PRODUCT_IMAGE_UPLOADED/PRIMARY_CHANGED/REMOVED`, `PRODUCT_IMAGES_REORDERED`,
+`CATEGORY_IMAGE_UPLOADED/REPLACED/REMOVED`, `MEDIA_CLEANUP_FAILED`); shared contracts drop
+the obsolete product-image create/update inputs and add `ReorderProductImagesInput`.
+Migration `20261001020000_phase10c_public_catalog_media` is applied via the same safe flow
+(exactly 4 `ADD COLUMN`, no drops). Admin UI lives in `AdminCataloguePage`; storefront
+`CategoryChips` renders category thumbnails. Verified green: **API 390 passed / 5 skipped
+(44 files), Web 124 passed (17 files)**, typecheck, lint, full build, `prisma validate`, and
+`prisma migrate status` (up to date). Cloudinary credentials are server-only and never a
+`VITE_*` var; nothing committed in Phase 10C (baseline `46942aa`); see
+`docs/phase-10c-report.md` and ADRs 43–47.

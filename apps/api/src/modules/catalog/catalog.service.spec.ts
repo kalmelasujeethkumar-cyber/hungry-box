@@ -180,6 +180,49 @@ describe('CatalogService.getProductDetail', () => {
     expect(result.isAvailable).toBe(false);
   });
 
+  it('returns the primary image first and never leaks provider metadata', async () => {
+    const db = {
+      branch: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'b1', status: 'ACTIVE' }),
+      },
+      product: {
+        findFirst: vi.fn().mockResolvedValue(
+          detailRow({
+            images: [
+              {
+                id: 'img-2',
+                imageUrl: 'https://cdn.example/2.jpg',
+                altText: 'Second',
+                sortOrder: 0,
+                isPrimary: true,
+                providerPublicId: 'hungry-box/catalog/products/product-1/secret-public-id',
+                resourceType: 'image',
+              },
+              {
+                id: 'img-1',
+                imageUrl: 'https://cdn.example/1.jpg',
+                altText: null,
+                sortOrder: 1,
+                isPrimary: false,
+                providerPublicId: 'hungry-box/catalog/products/product-1/other',
+                resourceType: 'image',
+              },
+            ],
+          }),
+        ),
+      },
+    };
+    const service = buildService(db);
+
+    const result = await service.getProductDetail('product-1', 'b1');
+
+    expect(result.imageUrl).toBe('https://cdn.example/2.jpg');
+    expect(result.images[0]).toMatchObject({ id: 'img-2', isPrimary: true });
+    expect(result.images[0]).not.toHaveProperty('providerPublicId');
+    expect(result.images[0]).not.toHaveProperty('resourceType');
+    expect(result.images[1]).not.toHaveProperty('providerPublicId');
+  });
+
   it('throws NotFoundException when the product is not configured for the branch', async () => {
     const db = {
       branch: {
@@ -215,7 +258,7 @@ describe('CatalogService.listCategories', () => {
             name: 'Starters',
             slug: 'starters',
             description: null,
-            imageUrl: null,
+            imageUrl: 'https://cdn.example/category.jpg',
             sortOrder: 1,
           },
         ]),
@@ -226,7 +269,13 @@ describe('CatalogService.listCategories', () => {
     const result = await service.listCategories();
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ slug: 'starters', sortOrder: 1 });
+    expect(result[0]).toMatchObject({
+      slug: 'starters',
+      sortOrder: 1,
+      imageUrl: 'https://cdn.example/category.jpg',
+    });
+    expect(result[0]).not.toHaveProperty('imagePublicId');
+    expect(result[0]).not.toHaveProperty('imageResourceType');
     expect(db.category.findMany).toHaveBeenCalledTimes(1);
   });
 

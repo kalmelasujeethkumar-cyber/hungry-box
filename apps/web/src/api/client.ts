@@ -24,7 +24,6 @@ import type {
   CreateManagerResultDto,
   CreateOrderInput,
   CreatePaymentIntentInput,
-  CreateProductImageInput,
   DashboardSummaryDto,
   DeliverAssignmentInput,
   DeliveryAssignmentDto,
@@ -43,6 +42,7 @@ import type {
   OrderStatus,
   OrderSummaryDto,
   PaymentIntentDto,
+  ReorderProductImagesInput,
   ReviewPartnerDocumentInput,
   ServiceabilityResult,
   SetBranchStatusInput,
@@ -56,7 +56,6 @@ import type {
   UpdateCategoryInput,
   UpdateDeliveryLocationInput,
   UpdateDeliveryPartnerInput,
-  UpdateProductImageInput,
   UpdateProductInput,
   UpsertPartnerDocumentInput,
   UserListQuery,
@@ -139,7 +138,6 @@ export async function apiRequestText(
     response = await fetch(`${API_BASE_URL}${path}`, {
       method: options.method ?? 'GET',
       headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     });
   } catch {
     throw new ApiError('Unable to reach the server', 0);
@@ -154,6 +152,33 @@ export async function apiRequestText(
   }
 
   return response.text();
+}
+
+export async function uploadRequest<T>(path: string, form: FormData, token: string): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  headers.Authorization = `Bearer ${token}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+  } catch {
+    throw new ApiError('Unable to reach the server', 0);
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      notifySessionExpired();
+    }
+    const { message, details } = await extractErrorPayload(response);
+    throw new ApiError(message, response.status, details);
+  }
+
+  const text = await response.text();
+  return (text ? (JSON.parse(text) as T) : undefined) as T;
 }
 
 async function extractErrorPayload(
@@ -333,7 +358,10 @@ export const deliveryPartnerApi = {
   deliver: (assignmentId: string, token: string, cashCollected?: boolean) =>
     apiRequest<DeliveryAssignmentDto>(`/delivery/assignments/${assignmentId}/deliver`, {
       method: 'POST',
-      body: cashCollected === undefined ? undefined : ({ cashCollected } satisfies DeliverAssignmentInput),
+      body:
+        cashCollected === undefined
+          ? undefined
+          : ({ cashCollected } satisfies DeliverAssignmentInput),
       token,
     }),
 };
@@ -560,14 +588,19 @@ export const productsApi = {
       body: input,
       token,
     }),
-  addImage: (id: string, input: CreateProductImageInput, token: string) =>
-    apiRequest<GlobalProductDetailDto>(`/products/${id}/images`, {
-      method: 'POST',
-      body: input,
+  uploadImage: (id: string, file: File, altText: string | undefined, token: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (altText) form.append('altText', altText);
+    return uploadRequest<GlobalProductDetailDto>(`/products/${id}/images`, form, token);
+  },
+  setPrimaryImage: (imageId: string, token: string) =>
+    apiRequest<GlobalProductDetailDto>(`/products/images/${imageId}/primary`, {
+      method: 'PATCH',
       token,
     }),
-  updateImage: (imageId: string, input: UpdateProductImageInput, token: string) =>
-    apiRequest<GlobalProductDetailDto>(`/products/images/${imageId}`, {
+  reorderImages: (input: ReorderProductImagesInput, token: string) =>
+    apiRequest<GlobalProductDetailDto>('/products/images/reorder', {
       method: 'PATCH',
       body: input,
       token,
@@ -585,6 +618,13 @@ export const categoriesApi = {
     apiRequest<CategoryDto>('/categories', { method: 'POST', body: input, token }),
   update: (id: string, input: UpdateCategoryInput, token: string) =>
     apiRequest<CategoryDto>(`/categories/${id}`, { method: 'PATCH', body: input, token }),
+  uploadImage: (id: string, file: File, token: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    return uploadRequest<CategoryDto>(`/categories/${id}/image`, form, token);
+  },
+  removeImage: (id: string, token: string) =>
+    apiRequest<CategoryDto>(`/categories/${id}/image`, { method: 'DELETE', token }),
 };
 
 export const adminApi = {

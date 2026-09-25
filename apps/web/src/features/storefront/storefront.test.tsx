@@ -490,3 +490,59 @@ describe('mobile-first shell', () => {
     }
   });
 });
+
+describe('storefront catalogue media', () => {
+  it('renders the optimized primary image and falls back to an initial otherwise', async () => {
+    const BIRYANI_IMAGE =
+      'https://res.cloudinary.com/hungrybox/image/upload/v1/hungry-box/catalog/products/prod-biryani/hash.jpg';
+    const CATEGORY_IMAGE =
+      'https://res.cloudinary.com/hungrybox/image/upload/v1/hungry-box/catalog/categories/cat-biryani/hash.jpg';
+    catalogApiMock.listCategories.mockResolvedValue([{ ...CATEGORY, imageUrl: CATEGORY_IMAGE }]);
+    catalogApiMock.listProducts.mockResolvedValue([
+      { ...BIRYANI, imageUrl: BIRYANI_IMAGE },
+      PANEER,
+    ]);
+    catalogApiMock.getProduct.mockResolvedValue({ ...DETAIL, imageUrl: BIRYANI_IMAGE });
+    const user = userEvent.setup();
+    harness(<StorefrontPage />);
+
+    const cardImage = await screen.findByRole('img', { name: 'Hyderabadi Biryani' });
+    expect(cardImage).toHaveAttribute('src', BIRYANI_IMAGE);
+
+    const paneerCard = (await screen.findByRole('button', { name: 'View Paneer Roll' })).closest(
+      'article',
+    );
+    expect(paneerCard).not.toBeNull();
+    expect(within(paneerCard as HTMLElement).getByText('P')).toBeInTheDocument();
+
+    const nav = await screen.findByRole('navigation', { name: 'Menu categories' });
+    const categoryThumb = nav.querySelector('img');
+    expect(categoryThumb).not.toBeNull();
+    expect(categoryThumb as HTMLImageElement).toHaveAttribute('src', CATEGORY_IMAGE);
+
+    await user.click(screen.getByRole('button', { name: 'View Hyderabadi Biryani' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Hyderabadi Biryani' });
+    expect(within(dialog).getByRole('img', { name: 'Hyderabadi Biryani' })).toHaveAttribute(
+      'src',
+      BIRYANI_IMAGE,
+    );
+  });
+
+  it('shows the cart item image when a product has one', async () => {
+    const CART_IMAGE =
+      'https://res.cloudinary.com/hungrybox/image/upload/v1/hungry-box/catalog/products/prod-biryani/hash.jpg';
+    cartApiMock.get.mockResolvedValue({
+      ...CART_WITH_ITEMS,
+      items: [{ ...CART_WITH_ITEMS.items[0], imageUrl: CART_IMAGE }],
+    });
+    const user = userEvent.setup();
+    harness(<StorefrontPage />);
+
+    await user.click(await screen.findByRole('button', { name: /Open cart/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Your cart' });
+    expect(within(sheet).getByRole('img', { name: 'Hyderabadi Biryani' })).toHaveAttribute(
+      'src',
+      CART_IMAGE,
+    );
+  });
+});

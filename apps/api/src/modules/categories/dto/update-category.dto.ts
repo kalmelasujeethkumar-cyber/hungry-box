@@ -21,11 +21,6 @@ export class UpdateCategoryDto implements UpdateCategoryInput {
   description?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  imageUrl?: string;
-
-  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
