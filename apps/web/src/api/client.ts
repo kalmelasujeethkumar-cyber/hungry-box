@@ -36,6 +36,11 @@ import type {
   DevPaymentSimulateInput,
   GlobalProductDetailDto,
   GlobalProductListItemDto,
+  KycDocumentAccessDto,
+  KycDocumentType,
+  KycListItemDto,
+  KycReviewInput,
+  KycStatusDto,
   LoginResponse,
   NotificationDto,
   OrderDetailDto,
@@ -362,6 +367,38 @@ export const deliveryPartnerApi = {
         cashCollected === undefined
           ? undefined
           : ({ cashCollected } satisfies DeliverAssignmentInput),
+      token,
+    }),
+  kycStatus: (token: string) => apiRequest<KycStatusDto>('/delivery/kyc', { token }),
+  kycUploadDocument: (type: KycDocumentType, file: File, token: string) => {
+    const form = new FormData();
+    form.append('type', type);
+    form.append('file', file);
+    return uploadRequest<KycStatusDto>('/delivery/kyc/documents', form, token);
+  },
+  kycDocumentAccess: (type: KycDocumentType, token: string) =>
+    apiRequest<KycDocumentAccessDto>(`/delivery/kyc/documents/${type}/access`, {
+      method: 'POST',
+      token,
+    }),
+};
+
+export const branchKycApi = {
+  list: (token: string, branchId?: string) =>
+    apiRequest<KycListItemDto[]>(`/branch/kyc${queryString(branchId ? { branchId } : {})}`, {
+      token,
+    }),
+  get: (partnerId: string, token: string) =>
+    apiRequest<KycStatusDto>(`/branch/kyc/${partnerId}`, { token }),
+  documentAccess: (partnerId: string, type: KycDocumentType, token: string) =>
+    apiRequest<KycDocumentAccessDto>(`/branch/kyc/${partnerId}/documents/${type}/access`, {
+      method: 'POST',
+      token,
+    }),
+  review: (partnerId: string, type: KycDocumentType, input: KycReviewInput, token: string) =>
+    apiRequest<KycStatusDto>(`/branch/kyc/${partnerId}/documents/${type}/review`, {
+      method: 'POST',
+      body: input,
       token,
     }),
 };

@@ -44,6 +44,7 @@ const MOCK_APIS = vi.hoisted(() => ({
     assign: vi.fn(),
     cancelAssignment: vi.fn(),
   },
+  branchKycApi: { get: vi.fn(), documentAccess: vi.fn(), review: vi.fn() },
   ApiError: class ApiError extends Error {
     readonly status: number;
     readonly details: Record<string, unknown> | null;
@@ -173,12 +174,25 @@ const CANDIDATES: DeliveryPartnerCandidateDto[] = [
   },
 ];
 
+const KYC_STATUS = {
+  partnerId: 'HB-DP-000001',
+  fullName: 'Shiva Kumar',
+  branchId: 'br-guntur',
+  branchName: 'Guntur',
+  overallState: 'AWAITING_REVIEW' as const,
+  documents: [
+    { type: 'AADHAAR' as const, status: 'UPLOADED' as const, verificationNote: null, verifiedAt: null, canReupload: true },
+    { type: 'DRIVING_LICENSE' as const, status: 'UPLOADED' as const, verificationNote: null, verifiedAt: null, canReupload: true },
+  ],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   MOCK_APIS.branchDeliveryApi.listPartners.mockResolvedValue(PARTNER_LIST);
   MOCK_APIS.branchDeliveryApi.getPartner.mockResolvedValue(PARTNER_DETAIL);
   MOCK_APIS.branchDeliveryApi.listAssignments.mockResolvedValue(ASSIGNMENT_LIST);
   MOCK_APIS.branchDeliveryApi.candidates.mockResolvedValue(CANDIDATES);
+  MOCK_APIS.branchKycApi.get.mockResolvedValue(KYC_STATUS);
   MOCK_APIS.branchOrdersApi.list.mockResolvedValue([
     {
       id: 'ord-9',
@@ -286,7 +300,12 @@ describe('manager partner detail', () => {
     );
 
     await screen.findByText('Shiva Kumar');
-    const aadhaarRow = screen.getByText('Aadhaar').closest('li');
+    const aadhaarRow = screen
+      .getAllByText('Aadhaar')
+      .map((node) => node.closest('li'))
+      .find(
+        (row) => row !== null && within(row).queryByRole('button', { name: 'Approve' }) !== null,
+      );
     expect(aadhaarRow).not.toBeNull();
     await user.click(within(aadhaarRow!).getByRole('button', { name: 'Approve' }));
 
@@ -298,7 +317,7 @@ describe('manager partner detail', () => {
         'test-token',
       ),
     );
-    expect(await screen.findByText('Awaiting 3 more required documents.')).toBeInTheDocument();
+    expect(await screen.findByText('Awaiting 1 more required documents.')).toBeInTheDocument();
   });
 
   it('rejects a document with a note', async () => {
@@ -319,7 +338,13 @@ describe('manager partner detail', () => {
     );
 
     await screen.findByText('Shiva Kumar');
-    const aadhaarRow = screen.getByText('Aadhaar').closest('li');
+    const aadhaarRow = screen
+      .getAllByText('Aadhaar')
+      .map((node) => node.closest('li'))
+      .find(
+        (row) => row !== null && within(row).queryByRole('button', { name: 'Reject' }) !== null,
+      );
+    expect(aadhaarRow).not.toBeNull();
     await user.click(within(aadhaarRow!).getByRole('button', { name: 'Reject' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Reject this document?' });

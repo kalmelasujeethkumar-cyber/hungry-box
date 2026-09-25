@@ -9,6 +9,7 @@ import {
   PARTNER_STATUS_LABELS,
   PARTNER_TYPE_LABELS,
 } from '../../features/delivery/delivery-status';
+import PartnerKycCard from '../../features/delivery/PartnerKycCard';
 import EmptyState from '../../features/storefront/components/EmptyState';
 import { UserIcon } from '../../features/storefront/components/icons';
 import { formatDateOnly } from '../../lib/format';
@@ -63,6 +64,8 @@ export default function DeliveryProfilePage(): JSX.Element {
           reviews your documents before you can go online.
         </div>
       ) : null}
+
+      <PartnerKycCard />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Personal</h2>

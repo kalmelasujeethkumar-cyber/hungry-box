@@ -533,6 +533,11 @@ model DeliveryPartnerDocument {
   deliveryPartner   DeliveryPartnerProfile @relation(fields: [deliveryPartnerId], references: [id], onDelete: Cascade)
   type              DocumentType
   documentReference String?
+  storageProvider   String?
+  providerPublicId  String?
+  resourceType      String?
+  format            String?
+  fileSize          Int?
   status            DocumentStatus @default(UPLOADED)
   verificationNote  String?
   verifiedById      String?

@@ -5,6 +5,11 @@ import {
   AVAILABILITY_LABELS,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
+  KYC_DOCUMENT_LABELS,
+  KYC_DOCUMENT_STATUS_LABELS,
+  KYC_DOCUMENT_TYPES,
+  KYC_OVERALL_CHIP_CLASSES,
+  KYC_OVERALL_LABELS,
   PARTNER_STATUS_LABELS,
   PARTNER_TYPE_LABELS,
   REQUIRED_VERIFICATION_DOCUMENTS,
@@ -28,7 +33,17 @@ describe('delivery-status runtime labels', () => {
   it('labels document types and review states and lists the required set', () => {
     expect(DOCUMENT_STATUS_LABELS.VERIFIED).toBe('Verified');
     expect(DOCUMENT_TYPE_LABELS.AADHAAR).toBe('Aadhaar');
-    expect(REQUIRED_VERIFICATION_DOCUMENTS).toEqual(['AADHAAR', 'ADDRESS_PROOF', 'PAN', 'DRIVING_LICENSE']);
+    expect(REQUIRED_VERIFICATION_DOCUMENTS).toEqual(['AADHAAR', 'DRIVING_LICENSE']);
+  });
+
+  it('labels the private KYC documents and overall states', () => {
+    expect(KYC_DOCUMENT_TYPES).toEqual(['AADHAAR', 'DRIVING_LICENSE']);
+    expect(KYC_DOCUMENT_LABELS.AADHAAR).toBe('Aadhaar');
+    expect(KYC_DOCUMENT_LABELS.DRIVING_LICENSE).toBe('Driving licence');
+    expect(KYC_DOCUMENT_STATUS_LABELS.PENDING).toBe('Not uploaded');
+    expect(KYC_OVERALL_LABELS.INCOMPLETE).toBe('KYC incomplete');
+    expect(KYC_OVERALL_LABELS.VERIFIED).toBe('KYC complete');
+    expect(KYC_OVERALL_CHIP_CLASSES.ACTION_REQUIRED).toBe('bg-rose-100 text-rose-700');
   });
 
   it('marks a status as active only within the live assignment window', () => {

@@ -21,7 +21,7 @@ const MOCK_AUTH = vi.hoisted(() => ({
 }));
 
 const MOCK_APIS = vi.hoisted(() => ({
-  deliveryPartnerApi: { profile: vi.fn() },
+  deliveryPartnerApi: { profile: vi.fn(), kycStatus: vi.fn(), kycDocumentAccess: vi.fn() },
 }));
 
 vi.mock('../../api/client', () => MOCK_APIS);
@@ -82,9 +82,22 @@ const PROFILE: DeliveryPartnerProfileDto = {
   ],
 };
 
+const KYC_STATUS = {
+  partnerId: 'HB-DP-000001',
+  fullName: 'Shiva Kumar',
+  branchId: 'br-guntur',
+  branchName: 'Guntur',
+  overallState: 'VERIFIED' as const,
+  documents: [
+    { type: 'AADHAAR' as const, status: 'VERIFIED' as const, verificationNote: null, verifiedAt: '2026-09-02T00:00:00.000Z', canReupload: false },
+    { type: 'DRIVING_LICENSE' as const, status: 'VERIFIED' as const, verificationNote: null, verifiedAt: '2026-09-02T00:00:00.000Z', canReupload: false },
+  ],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   MOCK_APIS.deliveryPartnerApi.profile.mockResolvedValue(PROFILE);
+  MOCK_APIS.deliveryPartnerApi.kycStatus.mockResolvedValue(KYC_STATUS);
 });
 
 describe('delivery profile', () => {
@@ -100,9 +113,11 @@ describe('delivery profile', () => {
     expect(screen.getByText('XXXX XXXX 2025')).toBeInTheDocument();
     expect(screen.getByText('XXXX XXXX 4321')).toBeInTheDocument();
     expect(screen.getByText('AP07AB4321')).toBeInTheDocument();
-    expect(screen.getByText('Aadhaar')).toBeInTheDocument();
+    await screen.findByText('KYC complete');
+    expect(screen.getAllByText('Aadhaar').length).toBe(2);
     expect(screen.getByText(/2\/2 verified/)).toBeInTheDocument();
     expect(MOCK_APIS.deliveryPartnerApi.profile).toHaveBeenCalledWith('test-token');
+    expect(MOCK_APIS.deliveryPartnerApi.kycStatus).toHaveBeenCalledWith('test-token');
   });
 
   it('warns a non-active partner that their profile is pending verification', async () => {

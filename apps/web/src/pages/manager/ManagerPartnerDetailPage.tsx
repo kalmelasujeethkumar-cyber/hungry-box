@@ -14,6 +14,7 @@ import {
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
 import EmptyState from '../../features/storefront/components/EmptyState';
 import { UserIcon } from '../../features/storefront/components/icons';
+import ManagerKycCard from '../../features/delivery/ManagerKycCard';
 import { formatDateOnly } from '../../lib/format';
 import ManagerLayout from './ManagerLayout';
 
@@ -334,6 +335,10 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
           ))}
         </ul>
       </section>
+
+      <div className="mt-4">
+        <ManagerKycCard partnerId={partnerId} />
+      </div>
 
       <ConfirmDialog
         open={dialog?.kind === 'reject-profile'}

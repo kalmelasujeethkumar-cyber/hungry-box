@@ -11,3 +11,4 @@ export * from './delivery';
 export * from './audit';
 export * from './users';
 export * from './analytics';
+export * from './kyc';

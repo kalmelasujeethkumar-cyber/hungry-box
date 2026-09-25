@@ -15,6 +15,7 @@ import { CheckoutModule } from './modules/checkout/checkout.module';
 import { DeliveriesModule } from './modules/deliveries/deliveries.module';
 import { DeliveryPartnersModule } from './modules/delivery-partners/delivery-partners.module';
 import { HealthModule } from './modules/health/health.module';
+import { KycModule } from './modules/kyc/kyc.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OrdersModule } from './modules/orders/orders.module';
@@ -56,6 +57,7 @@ import { RequestLoggingMiddleware } from './common/middleware/request-logging.mi
     RealtimeModule,
     HealthModule,
     AnalyticsModule,
+    KycModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

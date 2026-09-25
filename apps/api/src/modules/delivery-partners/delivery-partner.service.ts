@@ -44,7 +44,7 @@ export interface PartnerActor {
   userId: string;
 }
 
-const REQUIRED_DOCUMENTS: DocumentType[] = ['AADHAAR', 'ADDRESS_PROOF', 'PAN', 'DRIVING_LICENSE'];
+const REQUIRED_DOCUMENTS: DocumentType[] = ['AADHAAR', 'DRIVING_LICENSE'];
 const ACTIVE_ASSIGNMENT_STATUSES: DeliveryAssignmentStatus[] = [
   'ASSIGNED',
   'ACCEPTED',

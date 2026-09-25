@@ -10,6 +10,7 @@ import type { UserRole } from '@hungrybox/shared';
 import { UserStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequest } from '../interfaces/authenticated-request';
+import { ALLOW_INACTIVE_DELIVERY_PARTNER_KEY } from '../decorators/allow-inactive-delivery-partner.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
 /**
@@ -45,13 +46,21 @@ export class RolesGuard implements CanActivate {
     if (!requiredRoles.includes(user.role)) {
       throw new ForbiddenException('Role not permitted');
     }
+    const allowInactiveDeliveryPartner = this.reflector.getAllAndOverride<boolean>(
+      ALLOW_INACTIVE_DELIVERY_PARTNER_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     if (REVALIDATED_ROLES.includes(user.role)) {
-      await this.ensureActive(user.sub, user.role);
+      await this.ensureActive(user.sub, user.role, allowInactiveDeliveryPartner === true);
     }
     return true;
   }
 
-  private async ensureActive(userId: string, role: UserRole): Promise<void> {
+  private async ensureActive(
+    userId: string,
+    role: UserRole,
+    allowInactiveDeliveryPartner = false,
+  ): Promise<void> {
     const db = this.prisma.requireClient();
     const user = await db.user.findUnique({
       where: { id: userId },
@@ -60,7 +69,7 @@ export class RolesGuard implements CanActivate {
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new ForbiddenException('Account is not active');
     }
-    if (role === 'DELIVERY_PARTNER') {
+    if (role === 'DELIVERY_PARTNER' && !allowInactiveDeliveryPartner) {
       const profile = await db.deliveryPartnerProfile.findUnique({
         where: { userId },
         select: { id: true, status: true },

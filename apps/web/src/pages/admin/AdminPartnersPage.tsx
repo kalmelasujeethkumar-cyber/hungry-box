@@ -4,13 +4,18 @@ import type {
   BranchDto,
   DeliveryPartnerListItemDto,
   DeliveryPartnerStatus,
+  KycDocumentType,
+  KycListItemDto,
 } from '@hungrybox/shared';
-import { branchesApi, branchDeliveryApi } from '../../api/client';
+import { branchKycApi, branchesApi, branchDeliveryApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import EmptyState from '../../features/storefront/components/EmptyState';
 import { UserIcon } from '../../features/storefront/components/icons';
 import {
   AVAILABILITY_LABELS,
+  KYC_DOCUMENT_LABELS,
+  KYC_OVERALL_CHIP_CLASSES,
+  KYC_OVERALL_LABELS,
   PARTNER_STATUS_LABELS,
 } from '../../features/delivery/delivery-status';
 import AdminLayout from './AdminLayout';
@@ -30,11 +35,13 @@ export default function AdminPartnersPage(): JSX.Element {
   const { token } = useAuth();
   const [partners, setPartners] = useState<DeliveryPartnerListItemDto[]>([]);
   const [branches, setBranches] = useState<BranchDto[]>([]);
+  const [kycMap, setKycMap] = useState<Record<string, KycListItemDto>>({});
   const [branchId, setBranchId] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<DeliveryPartnerStatus | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [kycError, setKycError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     if (!token) return;
@@ -64,6 +71,29 @@ export default function AdminPartnersPage(): JSX.Element {
       .then(setBranches)
       .catch(() => undefined);
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    branchKycApi
+      .list(token)
+      .then((items) => {
+        const map: Record<string, KycListItemDto> = {};
+        for (const item of items) map[item.partnerId] = item;
+        setKycMap(map);
+      })
+      .catch(() => undefined);
+  }, [token]);
+
+  const handleViewDocument = (deliveryPartnerId: string, type: KycDocumentType): void => {
+    if (!token) return;
+    setKycError(null);
+    branchKycApi
+      .documentAccess(deliveryPartnerId, type, token)
+      .then((access) => window.open(access.url, '_blank', 'noopener,noreferrer'))
+      .catch((err: unknown) =>
+        setKycError(err instanceof Error ? err.message : 'Could not open the document.'),
+      );
+  };
 
   return (
     <AdminLayout kicker="Global operations" title="Delivery partners">
@@ -105,6 +135,7 @@ export default function AdminPartnersPage(): JSX.Element {
       </div>
 
       {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
+      {kycError ? <p className="mt-4 text-sm font-semibold text-red-600">{kycError}</p> : null}
 
       {loading ? (
         <p className="mt-6 text-sm text-slate-500">Loading partners…</p>
@@ -118,27 +149,63 @@ export default function AdminPartnersPage(): JSX.Element {
         </div>
       ) : (
         <ul className="mt-5 space-y-3">
-          {partners.map((partner) => (
-            <li
-              key={partner.id}
-              className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-bold text-brand-navy">{partner.fullName}</p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {partner.partnerId} · {partner.branch.name} ({partner.branch.city})
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy">
-                  {AVAILABILITY_LABELS[partner.availability]}
-                </span>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-                  {PARTNER_STATUS_LABELS[partner.status]}
-                </span>
-              </div>
-            </li>
-          ))}
+          {partners.map((partner) => {
+            const kyc = kycMap[partner.partnerId];
+            return (
+              <li
+                key={partner.id}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-brand-navy">{partner.fullName}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {partner.partnerId} · {partner.branch.name} ({partner.branch.city})
+                  </p>
+                  {kyc ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Aadhaar {kyc.hasAadhaar ? 'uploaded' : 'missing'} · licence{' '}
+                      {kyc.hasDrivingLicense ? 'uploaded' : 'missing'}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {kyc ? (
+                    <>
+                      <span
+                        className={`hidden rounded-full px-2.5 py-1 text-xs font-bold sm:inline-block ${KYC_OVERALL_CHIP_CLASSES[kyc.overallState]}`}
+                      >
+                        {KYC_OVERALL_LABELS[kyc.overallState]}
+                      </span>
+                      {kyc.hasAadhaar ? (
+                        <button
+                          type="button"
+                          onClick={() => handleViewDocument(partner.partnerId, 'AADHAAR')}
+                          className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-bold text-slate-700 hover:border-brand-teal"
+                        >
+                          {KYC_DOCUMENT_LABELS.AADHAAR}
+                        </button>
+                      ) : null}
+                      {kyc.hasDrivingLicense ? (
+                        <button
+                          type="button"
+                          onClick={() => handleViewDocument(partner.partnerId, 'DRIVING_LICENSE')}
+                          className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-bold text-slate-700 hover:border-brand-teal"
+                        >
+                          {KYC_DOCUMENT_LABELS.DRIVING_LICENSE}
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <span className="rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy">
+                    {AVAILABILITY_LABELS[partner.availability]}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                    {PARTNER_STATUS_LABELS[partner.status]}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </AdminLayout>

@@ -564,6 +564,46 @@ plus explicit cancel windows, recorded as append-only `OrderEvent`rows and`*At` 
 true, width: 800, crop: 'limit', f_auto, q_auto })`; `providerPublicId`/`resourceType`
   stay server-internal and out of shared contracts and audit payloads. Delivered in
   Phase 10C.
+- **2026-09 / ADR-048 KYC requires exactly Aadhaar + Driving Licence for every delivery
+  partner:** the private-document policy is `['AADHAAR', 'DRIVING_LICENSE']` (capability is
+  configurable data, not a literal branch/city rule). Legacy PAN/ADDRESS_PROOF rows remain
+  supported for historical data and migration but are not part of the KYC gate; the
+  activation flow reuses the same `REQUIRED_DOCUMENTS` source of truth. Delivered in
+  Phase 10D.
+- **2026-09 / ADR-049 Private identity documents are stored behind their own provider,
+  never as public media:** KYC assets live in Cloudinary as `type: 'authenticated'` under a
+  `hungry-box/kyc` folder through the `PRIVATE_KYC_STORAGE_PROVIDER` symbol, mirroring the
+  public `MEDIA_STORAGE_PROVIDER` pattern (Cloudinary when configured, else an unavailable
+  provider that 503s). There is never a permanent public URL, a signed URL, or an identity
+  number persisted in the DB, audit messages, or logs. Delivered in Phase 10D.
+- **2026-09 / ADR-050 Private document access is backend-authorized and short-lived:** no
+  asset is ever downloadable by guessing a URL. Partner, branch manager, and super admin
+  request access on demand; the server re-checks RBAC + branch ownership and returns a
+  Cloudinary `private_download_url` that expires after ~5 minutes
+  (`PRIVATE_DOCUMENT_ACCESS_TTL_MS`) and is never persisted. Delivered in Phase 10D.
+- **2026-09 / ADR-051 Private documents are validated server-side by magic bytes, not
+  MIME/extension:** `validatePrivateKycDocument` mirrors the public validator — JPEG/PNG
+  signatures only, ≤ 5 MB (`MAX_PRIVATE_DOCUMENT_BYTES`), PDF/SVG/WebP/HEIC/disguised
+  payloads rejected; the multipart route carries a matching `FileInterceptor` size cap.
+  Delivered in Phase 10D.
+- **2026-09 / ADR-052 KYC verification is a human Branch Manager decision, never
+  machine:** there is no OCR/auto-verification. Only a manager of the partner's assigned
+  branch (server-enforced `branch_id` match, IDOR-safe) may VERIFY/REJECT; rejection
+  requires a note; super admin has global read/audit access but is forbidden from review in
+  the service; re-upload resets a document to `UPLOADED` and clears review fields. Delivered
+  in Phase 10D.
+- **2026-09 / ADR-053 Storage and DB stay consistent with the DB as source of truth and
+  best-effort remote cleanup:** upload writes the asset first, then the DB row; a failed DB
+  write deletes the orphan best-effort; re-upload deletes the old asset only after DB
+  success; any failed cleanup becomes a `SYSTEM`-actor `KYC_CLEANUP_FAILED` audit, never a
+  request error. `@AllowInactiveDeliveryPartner()` (RolesGuard opt-out) lets a
+  PENDING_VERIFICATION/DOCUMENT_REVIEW/SUSPENDED/INACTIVE partner upload or re-view their
+  own documents while keeping the user-account ACTIVE check and all other role gating.
+  Delivered in Phase 10D.
+- **2026-09 / ADR-054 KYC metadata never contains sensitive identity numbers:** the DB stores
+  only storage facts (`storageProvider`, `providerPublicId`, `resourceType`, `format`,
+  `fileSize`) plus review state; list/status contracts expose presence booleans and statuses,
+  never Aadhaar/licence numbers, references, or URLs. Delivered in Phase 10D.
 
 ---
 
@@ -710,3 +750,30 @@ Migration `20261001020000_phase10c_public_catalog_media` is applied via the same
 `prisma migrate status` (up to date). Cloudinary credentials are server-only and never a
 `VITE_*` var; nothing committed in Phase 10C (baseline `46942aa`); see
 `docs/phase-10c-report.md` and ADRs 43–47.
+
+## Phase 10D status (complete)
+
+Phase 10D (private delivery-partner KYC documents) is **shipped and verified**. Every
+delivery partner must have **Aadhaar + Driving Licence** (ADR-048) uploaded as private,
+authenticated Cloudinary images under `hungry-box/kyc` (ADR-049) that are never publicly
+addressable; partners self-service upload/re-upload (`POST /delivery/kyc/documents`,
+JPEG/PNG ≤ 5 MB magic-byte validated — ADR-051) and access is backend-authorized,
+short-lived, and never persisted (ADR-050). Branch Managers of the partner's assigned branch
+review each document (VERIFY/REJECT with required reason; ADR-052), Super Admin keeps global
+read/audit visibility but cannot review, and document statuses feed an overall KYC state
+(`INCOMPLETE` / `ACTION_REQUIRED` / `AWAITING_REVIEW` / `VERIFIED`) surfaced on the partner
+profile, manager partner detail, and admin partner list. Storage and DB stay consistent via
+best-effort cleanup with `KYC_CLEANUP_FAILED` audits, and the platform lets an
+under-review/inactive partner keep uploading via `@AllowInactiveDeliveryPartner()` (ADR-053);
+no sensitive identity numbers are ever stored or exposed (ADR-054).
+
+Schema: `DeliveryPartnerDocument` gains nullable `storageProvider` /
+`providerPublicId` / `resourceType` / `format` / `fileSize` via
+`20261001030000_phase10d_private_kyc_documents` (exactly 5 `ADD COLUMN`, no drops), applied
+with `prisma migrate deploy`. Audit kinds add
+`KYC_DOCUMENT_UPLOADED/REUPLOADED/VIEWED/VERIFIED/REJECTED` + `KYC_CLEANUP_FAILED`; shared
+contracts add type-only `kyc.ts` (`KycStatusDto`, `KycListItemDto`, `KycReviewInput`,
+`KycDocumentAccessDto`, …). Verified green: **API 440 passed / 5 skipped (44 files), Web 136
+passed (19 files)**, typecheck, lint, full build, `prisma validate`, and `prisma migrate
+status` (up to date, 7 migrations). Cloudinary credentials stay server-only; nothing
+committed in Phase 10D (baseline `da2f469`); see `docs/phase-10d-report.md` and ADRs 48–54.

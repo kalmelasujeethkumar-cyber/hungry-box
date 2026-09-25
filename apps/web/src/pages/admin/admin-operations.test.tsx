@@ -7,6 +7,7 @@ import type {
   BranchDto,
   DashboardSummaryDto,
   DeliveryPartnerListItemDto,
+  KycListItemDto,
   OrderSummaryDto,
   UserListResultDto,
 } from '@hungrybox/shared';
@@ -41,6 +42,7 @@ const MOCK_APIS = vi.hoisted(() => ({
   categoriesApi: { list: vi.fn() },
   branchOrdersApi: { listGlobal: vi.fn() },
   branchDeliveryApi: { listPartners: vi.fn() },
+  branchKycApi: { list: vi.fn(), documentAccess: vi.fn() },
   branchAuditApi: { list: vi.fn(), exportCsv: vi.fn() },
   adminApi: { dashboard: vi.fn(), ordersReportCsv: vi.fn() },
   ApiError: class ApiError extends Error {
@@ -254,6 +256,7 @@ beforeEach(() => {
   MOCK_APIS.adminApi.ordersReportCsv.mockResolvedValue('orderNumber,totalMinor\nHB-1,43000');
   MOCK_APIS.branchOrdersApi.listGlobal.mockResolvedValue([orderSummary()]);
   MOCK_APIS.branchDeliveryApi.listPartners.mockResolvedValue([partner()]);
+  MOCK_APIS.branchKycApi.list.mockResolvedValue([]);
   MOCK_APIS.branchAuditApi.list.mockResolvedValue(AUDIT_RESULT);
   MOCK_APIS.branchAuditApi.exportCsv.mockResolvedValue('id,createdAt\nevt-1,2026-09-24');
 });
@@ -485,6 +488,43 @@ describe('admin partners', () => {
       expect(MOCK_APIS.branchDeliveryApi.listPartners).toHaveBeenCalledWith(
         'test-token',
         expect.objectContaining({ branchId: undefined }),
+      ),
+    );
+  });
+
+  it('shows global KYC status and secure view links per partner', async () => {
+    const kycItems: KycListItemDto[] = [
+      {
+        partnerId: 'DP-0001',
+        fullName: 'Shiva Kumar',
+        mobile: '9090909090',
+        status: 'ACTIVE',
+        overallState: 'AWAITING_REVIEW',
+        hasAadhaar: true,
+        hasDrivingLicense: false,
+      },
+    ];
+    MOCK_APIS.branchKycApi.list.mockResolvedValue(kycItems);
+    MOCK_APIS.branchKycApi.documentAccess.mockResolvedValue({
+      url: 'signed-url',
+      expiresAt: '2026-09-24T10:10:00.000Z',
+    });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <AdminPartnersPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('KYC awaiting review')).toBeInTheDocument();
+    expect(screen.getByText(/Aadhaar uploaded · licence missing/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Aadhaar' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.branchKycApi.documentAccess).toHaveBeenCalledWith(
+        'DP-0001',
+        'AADHAAR',
+        'test-token',
       ),
     );
   });
