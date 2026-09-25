@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
@@ -6,11 +7,15 @@ import type {
   VerifyPaymentResultDto,
 } from '@hungrybox/shared';
 import { PaymentStatus as PrismaPaymentStatus } from '../../generated/prisma/client';
+import type { Prisma, PrismaClient } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditKinds, AuditService } from '../audit/audit.service';
 import { DevPaymentProvider } from './dev-payment.provider';
 import { PaymentNotVerifiedException } from './payment-not-verified.exception';
 import { PaymentProviderRegistry } from './payment-provider.registry';
+
+/** Internal provider id reserved for cash-on-delivery payments. */
+export const COD_PROVIDER_ID = 'cod';
 
 export interface CreatedPayment {
   paymentId: string;
@@ -22,6 +27,8 @@ export interface CreatedPayment {
   method: SharedPaymentMethod;
   status: SharedPaymentStatus;
 }
+
+type PaymentClient = PrismaClient | Prisma.TransactionClient;
 
 @Injectable()
 export class PaymentsService {
@@ -74,6 +81,42 @@ export class PaymentsService {
       provider: provider.id,
       providerPaymentId: payment.providerPaymentId,
       providerOrderId: payment.providerOrderId,
+      amountMinor: payment.amountMinor,
+      currency: payment.currency,
+      method: payment.method,
+      status: payment.status,
+    };
+  }
+
+  /**
+   * Creates the internal cash-on-delivery payment record. Nothing is captured
+   * up front; the cash is collected on delivery by the delivery partner. This
+   * path bypasses the provider registry entirely, so a real gateway can never
+   * be handed a COD payment.
+   */
+  async createCodPayment(
+    customerId: string,
+    amountMinor: number,
+    client: PaymentClient = this.prisma.requireClient(),
+    currency = 'INR',
+  ): Promise<CreatedPayment> {
+    const payment = await client.payment.create({
+      data: {
+        customerId,
+        provider: COD_PROVIDER_ID,
+        providerPaymentId: `cod_${randomUUID()}`,
+        amountMinor,
+        currency,
+        method: 'COD',
+        status: PrismaPaymentStatus.PENDING,
+      },
+    });
+
+    return {
+      paymentId: payment.id,
+      provider: COD_PROVIDER_ID,
+      providerPaymentId: payment.providerPaymentId,
+      providerOrderId: null,
       amountMinor: payment.amountMinor,
       currency: payment.currency,
       method: payment.method,

@@ -33,7 +33,7 @@ export const ORDER_STATUS_STEP = [
 
 export type OrderStatusStep = (typeof ORDER_STATUS_STEP)[number];
 
-export const PAYMENT_METHODS = ['UPI', 'CARD', 'NET_BANKING', 'WALLET'] as const;
+export const PAYMENT_METHODS = ['UPI', 'CARD', 'NET_BANKING', 'WALLET', 'COD'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export const PAYMENT_STATUSES = [
@@ -197,6 +197,12 @@ export interface OrderPaymentDto {
   status: PaymentStatus;
   amountMinor: number;
   currency: string;
+  /** When the cash was collected for COD payments; null otherwise. */
+  collectedAt: string | null;
+  /** Role of the actor who collected COD cash; null unless collected. */
+  collectedByRole: string | null;
+  /** ID of the actor who collected COD cash; hidden from customers. */
+  collectedById: string | null;
 }
 
 export interface OrderSummaryDto {
@@ -204,6 +210,7 @@ export interface OrderSummaryDto {
   orderNumber: string;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
+  paymentMethod: PaymentMethod | null;
   branch: CartBranch;
   itemCount: number;
   subtotalMinor: number;
@@ -224,6 +231,13 @@ export interface OrderDetailDto extends OrderSummaryDto {
 
 export interface CreateOrderInput {
   paymentId: string;
+  idempotencyKey: string;
+  addressId: string;
+  notes?: string;
+}
+
+/** Cash-on-delivery order placement. No payment is captured up front. */
+export interface CreateCodOrderInput {
   idempotencyKey: string;
   addressId: string;
   notes?: string;

@@ -65,6 +65,7 @@ enum PaymentMethod {
   CARD
   NET_BANKING
   WALLET
+  COD
 }
 
 enum DeliveryPartnerStatus {
@@ -377,6 +378,9 @@ model Payment {
   method            PaymentMethod
   initiatedAt       DateTime      @default(now())
   paidAt            DateTime?
+  collectedAt       DateTime?
+  collectedByRole   String?
+  collectedById     String?
   failedAt          DateTime?
   failureReason     String?
   createdAt         DateTime      @default(now())

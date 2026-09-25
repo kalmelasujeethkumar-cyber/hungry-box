@@ -6,6 +6,7 @@ import { BranchActor, BranchOrdersService } from './branch-orders.service';
 import { BranchOrderCancelDto } from './dto/branch-order-cancel.dto';
 import { BranchOrderListQueryDto } from './dto/branch-order-list-query.dto';
 import { BranchOrderStatusDto } from './dto/branch-order-status.dto';
+import { CorrectCodCollectionDto } from './dto/correct-cod-collection.dto';
 
 @Controller('branch/orders')
 @Roles('SUPER_ADMIN', 'BRANCH_MANAGER')
@@ -40,7 +41,16 @@ export class BranchOrdersController {
     return this.branchOrders.cancel(this.actor(user), id, dto);
   }
 
+  @Post(':id/collect-cod')
+  collectCod(
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Body() dto: CorrectCodCollectionDto,
+  ) {
+    return this.branchOrders.collectCod(this.actor(user), id, dto);
+  }
+
   private actor(user: RequestUser): BranchActor {
-    return { role: user.role, branchId: user.branchId };
+    return { role: user.role, branchId: user.branchId, userId: user.sub };
   }
 }

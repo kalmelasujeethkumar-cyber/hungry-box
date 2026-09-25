@@ -621,3 +621,38 @@ no hard-coded credentials, no Guntur literals); only `.env.example` documentatio
 (`.env*` untouched); no new dependencies. Note the `dev` payment provider must still be
 replaced with a real gateway before live payments, and the web frontend is built but not yet
 served by Railway. See `docs/phase-9-report.md` and ADRs 31–36 above.
+
+## Phase 10B status (complete)
+
+Phase 10B (Cash on Delivery, cash only) is **shipped and verified**. COD reuses the existing
+`Payment` model — a `method='COD'`, `provider='cod'`, `status='PENDING'` row is created with
+the order (`POST /orders/cod`, idempotent via `idempotencyKey`) and never touches the
+payment-intent/provider layer; a COD order is security-boundary-excluded from online
+gateways by construction (no intent, no verification). Cash is collected in two audited
+paths:
+- Delivery partner completes delivery with `cashCollected: true`
+  (`deliver(assignmentId, token, cashCollected)`) → payment `PAID` (`collectedAt`,
+  `collectedByRole='DELIVERY_PARTNER'`, `collectedById`) + order `PAID` in one transaction;
+  pending-COD-without-cash refuses with `delivery.cash_not_collected` and never overwrites
+  an already-collected COD payment.
+- Branch manager corrects a missed phone-side collection
+  (`POST /branch/orders/:id/collect-cod`, reason required) via a guarded
+  `payment.updateMany` (`cod.already_collected` on double-collect) that also closes the
+  order payment.
+
+`Order.paymentStatus` and per-payment collection attributes are surfaced in the customer
+detail/success flows ("To pay on delivery … in cash", "Collected … by partner/by branch"),
+the delivery partner dashboard (cash prompt + checkbox before marking delivered), the
+manager order detail (record-cash button), and the super-admin overview (COD orders,
+cash-collected, cash-pending cards). Analytics adds a COD summary plus `collectedAt`,
+`collectedByRole`, `collectedById` CSV columns. Deliberately deferred: COD via
+payment-intent, half-payments/change handling, and the single-payment-per-order restriction
+enforcement on multiple COD rows (see ADR-042).
+
+Verified green: **API 345 passed / 5 skipped (40 files), Web 109 passed (16 files)**,
+typecheck, lint, full build, and `prisma validate`. The migration
+`20260924184622_phase6_cash_on_delivery` was applied with the safe `migrate dev --create-only`
++ `prisma migrate deploy` flow (it also folds in the previously-unmigrated `AuditEvent`
+branch `FK` and the `PartnerIdCounter` default; see ADR-041). `migration_lock.toml` is now
+present. Nothing committed in Phase 10B (baseline `cc0c5fa`); see
+`docs/phase-10b-report.md` and ADRs 41–42.

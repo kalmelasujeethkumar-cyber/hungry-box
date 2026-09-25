@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OrderStateService } from '../orders/order-state.service';
@@ -102,9 +102,14 @@ function baseDb() {
           return null;
         }),
       update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     orderEvent: {
       create: vi.fn().mockResolvedValue({}),
+    },
+    payment: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      count: vi.fn().mockResolvedValue(0),
     },
     auditEvent: {
       create: vi.fn().mockResolvedValue({}),
@@ -127,9 +132,9 @@ function buildService<T extends Record<string, unknown> = ReturnType<typeof base
   return { service, db, audit };
 }
 
-const superAdmin = { role: 'SUPER_ADMIN' as const, branchId: null };
-const gunturManager = { role: 'BRANCH_MANAGER' as const, branchId: 'b1' };
-const otherManager = { role: 'BRANCH_MANAGER' as const, branchId: 'b9' };
+const superAdmin = { role: 'SUPER_ADMIN' as const, branchId: null, userId: 'u-super' };
+const gunturManager = { role: 'BRANCH_MANAGER' as const, branchId: 'b1', userId: 'u-guntur' };
+const otherManager = { role: 'BRANCH_MANAGER' as const, branchId: 'b9', userId: 'u-other' };
 
 describe('BranchOrdersService.list', () => {
   it('lets a super admin see every branch and filter by branchId', async () => {
@@ -268,5 +273,85 @@ describe('BranchOrdersService.cancel', () => {
     const { service } = buildService({ db });
 
     await expect(service.cancel(gunturManager, 'o1', {})).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('BranchOrdersService.collectCod', () => {
+  it('records COD cash collection for a pending COD order', async () => {
+    const db = baseDb();
+    db.order.findUnique = vi
+      .fn()
+      .mockResolvedValue({ id: 'o1', branchId: 'b1', orderNumber: 'HB-1', status: 'OUT_FOR_DELIVERY' });
+    const { service, audit } = buildService({ db });
+
+    await service.collectCod(gunturManager, 'o1', { reason: 'Cash collected, app failed during final step' });
+
+    expect(db.payment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          orderId: 'o1',
+          method: 'COD',
+          status: 'PENDING',
+        }),
+        data: expect.objectContaining({
+          status: 'PAID',
+          collectedByRole: 'BRANCH_MANAGER',
+          collectedById: 'u-guntur',
+        }),
+      }),
+    );
+    expect(db.order.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'o1', status: { notIn: ['CANCELLED', 'DELIVERED'] } },
+        data: { paymentStatus: 'PAID' },
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'COD_COLLECTION_CORRECTED',
+        actorId: 'u-guntur',
+        branchId: 'b1',
+      }),
+    );
+  });
+
+  it('never double-collects an already collected COD payment', async () => {
+    const db = baseDb();
+    db.order.findUnique = vi
+      .fn()
+      .mockResolvedValue({ id: 'o1', branchId: 'b1', orderNumber: 'HB-1', status: 'OUT_FOR_DELIVERY' });
+    db.payment.updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    db.payment.count = vi.fn().mockResolvedValue(1);
+    const { service } = buildService({ db });
+
+    const error = await service
+      .collectCod(gunturManager, 'o1', { reason: 'double' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect(error).toMatchObject({ response: { code: 'cod.already_collected' } });
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not let a manager correct another branch order', async () => {
+    const { service, db } = buildService({});
+
+    await expect(
+      service.collectCod(otherManager, 'o1', { reason: 'no access' }),
+    ).rejects.toThrow(NotFoundException);
+    expect(db.payment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('forces a non-empty reason', async () => {
+    const db = baseDb();
+    db.order.findUnique = vi
+      .fn()
+      .mockResolvedValue({ id: 'o1', branchId: 'b1', orderNumber: 'HB-1', status: 'OUT_FOR_DELIVERY' });
+    const { service } = buildService({ db });
+
+    await expect(service.collectCod(gunturManager, 'o1', { reason: ' ' })).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(db.payment.updateMany).not.toHaveBeenCalled();
   });
 });

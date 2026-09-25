@@ -10,6 +10,8 @@ export interface AssignmentOrderSource {
   status: string;
   totalMinor: number;
   notes: string | null;
+  paymentStatus: string;
+  payments?: Array<{ method: string; status: string }>;
   branch: { id: string; name: string; code: string; city: string };
   address: {
     recipientName: string;
@@ -61,6 +63,8 @@ export function toAssignmentDto(source: AssignmentSource): DeliveryAssignmentDto
       status: source.order.status as DeliveryAssignmentDto['order']['status'],
       totalMinor: source.order.totalMinor,
       notes: source.order.notes,
+      paymentMethod: (source.order.payments?.[0]?.method as DeliveryAssignmentDto['order']['paymentMethod']) ?? null,
+      paymentStatus: (source.order.paymentStatus as DeliveryAssignmentDto['order']['paymentStatus']) ?? null,
       branch: source.order.branch,
       address: source.order.address
         ? {

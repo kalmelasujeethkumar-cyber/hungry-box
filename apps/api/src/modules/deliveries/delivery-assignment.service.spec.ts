@@ -98,6 +98,9 @@ function baseDb() {
     orderEvent: {
       create: vi.fn().mockResolvedValue({}),
     },
+    payment: {
+      update: vi.fn().mockResolvedValue({}),
+    },
     auditEvent: {
       create: vi.fn().mockResolvedValue({}),
     },
@@ -604,6 +607,135 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
     });
 
     await expect(service.deliver('u1', 'a1')).rejects.toThrow(DeliveryConflictException);
+  });
+
+  it('collects COD cash when the payment is pending and cashCollected is true', async () => {
+    const { service, db, audit, events } = buildService();
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'OUT_FOR_DELIVERY',
+      orderId: 'o1',
+    });
+    db.order.findUnique.mockResolvedValue({
+      id: 'o1',
+      status: 'OUT_FOR_DELIVERY',
+      orderNumber: 'HB-20260925-000001',
+      paymentStatus: 'PENDING',
+      payments: [{ id: 'pay-cod-1', status: 'PENDING' }],
+    });
+    db.deliveryAssignment.update.mockResolvedValue({});
+    db.order.update.mockResolvedValue({});
+    db.deliveryPartnerProfile.update.mockResolvedValue({});
+    db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('DELIVERED'));
+
+    await service.deliver('u1', 'a1', { cashCollected: true });
+
+    expect(db.deliveryAssignment.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'DELIVERED' }) }),
+    );
+    expect(db.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'DELIVERED', paymentStatus: 'PAID' }),
+      }),
+    );
+    expect(db.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pay-cod-1' },
+        data: expect.objectContaining({
+          status: 'PAID',
+          collectedAt: expect.any(Date),
+          collectedByRole: 'DELIVERY_PARTNER',
+          collectedById: 'u1',
+        }),
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: AuditKinds.COD_COLLECTED }),
+      db,
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: AuditKinds.DELIVERY_COMPLETED }),
+      db,
+    );
+    expect(events.announce).toHaveBeenCalledWith(
+      'b1',
+      'delivery.delivered',
+      'DELIVERED',
+      'a1',
+      'o1',
+      'HB-20260925-000001',
+      ['cust-1'],
+    );
+  });
+
+  it('refuses to complete a COD delivery without collecting cash and records a failed collection', async () => {
+    const { service, db, audit } = buildService();
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'OUT_FOR_DELIVERY',
+      orderId: 'o1',
+    });
+    db.order.findUnique.mockResolvedValue({
+      id: 'o1',
+      status: 'OUT_FOR_DELIVERY',
+      orderNumber: 'HB-20260925-000001',
+      paymentStatus: 'PENDING',
+      payments: [{ id: 'pay-cod-1', status: 'PENDING' }],
+    });
+
+    const error = await service.deliver('u1', 'a1').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DeliveryConflictException);
+    expect((error as DeliveryConflictException).code).toBe('delivery.cash_not_collected');
+    expect(db.deliveryAssignment.update).not.toHaveBeenCalled();
+    expect(db.payment.update).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: AuditKinds.COD_COLLECTION_FAILED }),
+    );
+  });
+
+  it('does not overwrite a COD payment already collected by the branch manager', async () => {
+    const { service, db } = buildService();
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'OUT_FOR_DELIVERY',
+      orderId: 'o1',
+    });
+    db.order.findUnique.mockResolvedValue({
+      id: 'o1',
+      status: 'OUT_FOR_DELIVERY',
+      orderNumber: 'HB-20260925-000001',
+      paymentStatus: 'PAID',
+      payments: [{ id: 'pay-cod-1', status: 'PAID' }],
+    });
+    db.deliveryAssignment.update.mockResolvedValue({});
+    db.order.update.mockResolvedValue({});
+    db.deliveryPartnerProfile.update.mockResolvedValue({});
+    db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('DELIVERED'));
+
+    await service.deliver('u1', 'a1', { cashCollected: true });
+
+    expect(db.payment.update).not.toHaveBeenCalled();
+    expect(db.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'DELIVERED', paymentStatus: 'PAID' }),
+      }),
+    );
   });
 });
 

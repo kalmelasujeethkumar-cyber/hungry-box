@@ -240,15 +240,49 @@ export default function CheckoutPage(): JSX.Element {
       });
   };
 
+  const placeCodOrder = (): void => {
+    setPayPhase('placing');
+    ordersApi
+      .createCod(
+        { idempotencyKey: crypto.randomUUID(), addressId: selectedAddressId! },
+        token!,
+      )
+      .then(async (order) => {
+        try {
+          await clearCart();
+        } catch {
+          // Cart refresh is cosmetic; the server already removed it.
+        }
+        navigate(`/customer/checkout/success/${order.id}`);
+      })
+      .catch((error: unknown) => {
+        setPayPhase('idle');
+        if (error instanceof ApiError && error.details?.preview) {
+          setPreview(error.details.preview as CheckoutPreviewDto);
+          setPayError(error.message);
+        } else {
+          setPayError(error instanceof Error ? error.message : 'Your order could not be placed.');
+        }
+      });
+  };
+
   const handlePayClick = (): void => {
     if (preview?.needsConfirmation) {
       setConfirmOpen(true);
+      return;
+    }
+    if (method === 'COD') {
+      placeCodOrder();
       return;
     }
     startPayment();
   };
 
   const payButtonLabel = (): string => {
+    if (method === 'COD') {
+      if (payPhase === 'placing') return 'Placing your order…';
+      return `Place order · Pay ${formatPaise(preview?.totalMinor ?? 0)} on delivery`;
+    }
     if (payPhase === 'creating-intent') return 'Starting payment…';
     if (payPhase === 'awaiting-simulation') return 'Waiting for payment…';
     if (payPhase === 'verifying') return 'Verifying payment…';
@@ -481,7 +515,9 @@ export default function CheckoutPage(): JSX.Element {
           {payButtonLabel()}
         </button>
         <p className="text-center text-xs text-slate-400">
-          Demo checkout with a simulated payment gateway. Your card is never touched.
+          {method === 'COD'
+            ? 'Cash on delivery — nothing is charged up front. Pay the delivery partner when your order arrives.'
+            : 'Demo checkout with a simulated payment gateway. Your card is never touched.'}
         </p>
       </div>
 
@@ -489,12 +525,16 @@ export default function CheckoutPage(): JSX.Element {
         open={confirmOpen}
         title="Prices changed"
         description={
-          'Some item prices changed since you added them to the cart. Review the totals above; paying now uses the updated prices shown.'
+          'Some item prices changed since you added them to the cart. Review the totals above; ordering now uses the updated prices shown.'
         }
-        confirmLabel="Pay updated total"
+        confirmLabel={method === 'COD' ? 'Place order' : 'Pay updated total'}
         onConfirm={() => {
           setConfirmOpen(false);
-          startPayment();
+          if (method === 'COD') {
+            placeCodOrder();
+          } else {
+            startPayment();
+          }
         }}
         onClose={() => setConfirmOpen(false)}
       />

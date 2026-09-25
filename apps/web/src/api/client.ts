@@ -17,6 +17,7 @@ import type {
   CheckoutPreviewDto,
   CreateAddressInput,
   CreateCategoryInput,
+  CreateCodOrderInput,
   CreateDeliveryPartnerInput,
   CreateDeliveryPartnerResultDto,
   CreateManagerInput,
@@ -25,6 +26,7 @@ import type {
   CreatePaymentIntentInput,
   CreateProductImageInput,
   DashboardSummaryDto,
+  DeliverAssignmentInput,
   DeliveryAssignmentDto,
   DeliveryAssignmentListItemDto,
   DeliveryAssignmentStatus,
@@ -280,6 +282,8 @@ export const ordersApi = {
   get: (id: string, token: string) => apiRequest<OrderDetailDto>(`/orders/${id}`, { token }),
   create: (input: CreateOrderInput, token: string) =>
     apiRequest<OrderDetailDto>('/orders', { method: 'POST', body: input, token }),
+  createCod: (input: CreateCodOrderInput, token: string) =>
+    apiRequest<OrderDetailDto>('/orders/cod', { method: 'POST', body: input, token }),
   cancel: (id: string, input: CancelOrderInput, token: string) =>
     apiRequest<OrderDetailDto>(`/orders/${id}/cancel`, { method: 'POST', body: input, token }),
 };
@@ -326,9 +330,10 @@ export const deliveryPartnerApi = {
       method: 'POST',
       token,
     }),
-  deliver: (assignmentId: string, token: string) =>
+  deliver: (assignmentId: string, token: string, cashCollected?: boolean) =>
     apiRequest<DeliveryAssignmentDto>(`/delivery/assignments/${assignmentId}/deliver`, {
       method: 'POST',
+      body: cashCollected === undefined ? undefined : ({ cashCollected } satisfies DeliverAssignmentInput),
       token,
     }),
 };
@@ -352,6 +357,12 @@ export const branchOrdersApi = {
     }),
   cancel: (orderId: string, reason: string | undefined, token: string) =>
     apiRequest<OrderDetailDto>(`/branch/orders/${orderId}/cancel`, {
+      method: 'POST',
+      body: { reason },
+      token,
+    }),
+  collectCod: (orderId: string, reason: string, token: string) =>
+    apiRequest<OrderDetailDto>(`/branch/orders/${orderId}/collect-cod`, {
       method: 'POST',
       body: { reason },
       token,

@@ -13,6 +13,7 @@ export const orderSummarySelect = {
   paymentStatus: true,
   branch: { select: { id: true, name: true, code: true, city: true } },
   items: { select: { quantity: true } },
+  payments: { orderBy: { createdAt: 'asc' } as const, take: 1, select: { method: true } },
   subtotalMinor: true,
   discountMinor: true,
   deliveryFeeMinor: true,
@@ -55,6 +56,9 @@ export const orderDetailSelect = {
       status: true,
       amountMinor: true,
       currency: true,
+      collectedAt: true,
+      collectedByRole: true,
+      collectedById: true,
     },
   },
   events: {
@@ -85,6 +89,7 @@ export function toOrderSummary(order: OrderSummarySource): OrderSummaryDto {
     orderNumber: order.orderNumber,
     status: order.status,
     paymentStatus: order.paymentStatus,
+    paymentMethod: order.payments?.[0]?.method ?? null,
     branch: {
       id: order.branch.id,
       name: order.branch.name,
@@ -102,7 +107,15 @@ export function toOrderSummary(order: OrderSummarySource): OrderSummaryDto {
   };
 }
 
-export function toOrderDetail(order: OrderDetailSource): OrderDetailDto {
+export interface OrderDetailMapperOptions {
+  /** Exposes the collector's user id for staff views. Always hidden from customers. */
+  includeCollectorId?: boolean;
+}
+
+export function toOrderDetail(
+  order: OrderDetailSource,
+  options: OrderDetailMapperOptions = {},
+): OrderDetailDto {
   return {
     ...toOrderSummary(order),
     items: order.items.map(toOrderItem),
@@ -133,9 +146,18 @@ export function toOrderDetail(order: OrderDetailSource): OrderDetailDto {
       status: payment.status,
       amountMinor: payment.amountMinor,
       currency: payment.currency,
+      collectedAt: toIso(payment.collectedAt),
+      collectedByRole: payment.collectedByRole ?? null,
+      collectedById: options.includeCollectorId ? (payment.collectedById ?? null) : null,
     })),
     events: order.events.map(toOrderEvent),
   };
+}
+
+function toIso(value: Date | string | null | undefined): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') return value;
+  return value.toISOString();
 }
 
 export function toOrderItem(item: OrderDetailSource['items'][number]): OrderItemDto {

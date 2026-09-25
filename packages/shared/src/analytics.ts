@@ -45,6 +45,19 @@ export interface DeliverySummaryDto {
   cancelledOrRejected: number;
 }
 
+export interface CodSummaryDto {
+  /** Number of orders carrying a COD payment (any status). */
+  totalOrders: number;
+  /** Number of COD payments collected (Payment status PAID). */
+  collectedCount: number;
+  /** Total minor amount of collected COD cash. */
+  collectedMinor: number;
+  /** Number of COD payments not yet collected and not on cancelled orders. */
+  uncollectedCount: number;
+  /** Total minor amount still due for collection. */
+  uncollectedMinor: number;
+}
+
 export interface CancellationSummaryDto {
   count: number;
   amountMinor: number;
@@ -71,6 +84,7 @@ export interface DashboardSummaryDto {
   cancellations: CancellationSummaryDto;
   refunds: CancellationSummaryDto;
   delivery: DeliverySummaryDto;
+  cod: CodSummaryDto;
   branchComparison: BranchPerformanceDto[];
   topProducts: ProductPerformanceAggregate[];
   timeSeries: TimeSeriesPoint[];
@@ -96,4 +110,8 @@ export interface OrderReportRow {
   deliveryFeeMinor: number;
   taxMinor: number;
   totalMinor: number;
+  /** When COD cash was collected; null for pre-paid or uncollected COD. */
+  collectedAt: string | null;
+  collectedByRole: string | null;
+  collectedById: string | null;
 }

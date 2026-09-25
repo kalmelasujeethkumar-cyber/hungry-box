@@ -169,6 +169,15 @@ function baseDb() {
     },
     payment: {
       update: vi.fn().mockResolvedValue({}),
+      create: vi.fn().mockResolvedValue({
+        id: 'pay-cod-1',
+        provider: 'cod',
+        providerPaymentId: 'cod_x',
+        amountMinor: 70800,
+        currency: 'INR',
+        method: 'COD',
+        status: 'PENDING',
+      }),
     },
     orderNumberCounter: {
       upsert: vi.fn().mockResolvedValue({ date: '20260925', seq: 1 }),
@@ -192,6 +201,7 @@ function buildService<T extends Record<string, unknown> = ReturnType<typeof base
     db?: T;
     resolve?: () => Promise<ValidatedCheckout>;
     requireFinalVerification?: ReturnType<typeof vi.fn>;
+    createCodPayment?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const db = (opts.db ?? baseDb()) as T;
@@ -207,6 +217,40 @@ function buildService<T extends Record<string, unknown> = ReturnType<typeof base
         payment: { id: 'pay-1', providerPaymentId: 'dev_x', amountMinor: 70800 },
         paidAt: new Date('2026-09-25T10:05:00.000Z'),
       }),
+    createCodPayment:
+      opts.createCodPayment ??
+      vi.fn().mockImplementation(
+        async (
+          customerId: string,
+          amountMinor: number,
+          client?: {
+            payment: { create: (args: Record<string, unknown>) => Promise<{ id: string }> };
+          },
+        ) => {
+          const payment = await client?.payment.create({
+            data: {
+              customerId,
+              provider: 'cod',
+              providerPaymentId: 'cod_x',
+              amountMinor,
+              currency: 'INR',
+              method: 'COD',
+              status: 'PENDING',
+            },
+          });
+          const created = payment as unknown as { id: string };
+          return {
+            paymentId: created.id,
+            provider: 'cod',
+            providerPaymentId: 'cod_x',
+            providerOrderId: null,
+            amountMinor,
+            currency: 'INR',
+            method: 'COD',
+            status: 'PENDING',
+          };
+        },
+      ),
   };
   const orderNumbers = { next: vi.fn().mockResolvedValue('HB-20260925-000001') };
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
@@ -423,6 +467,102 @@ describe('OrdersService.create', () => {
       service.create('cust-1', { paymentId: 'pay-1', idempotencyKey: 'ik', addressId: 'a1' }),
     ).rejects.toThrow(PaymentNotVerifiedException);
     expect(db.order.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrdersService.createCod', () => {
+  it('places a COD order with a PENDING payment and server-computed totals', async () => {
+    const { service, db, payments, audit } = buildService({});
+
+    const result = await service.createCod('cust-1', {
+      idempotencyKey: 'cod-ik-1',
+      addressId: 'a1',
+      notes: 'Keep in bag',
+    });
+
+    expect(result.id).toBe('o1');
+    expect(db.payment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          provider: 'cod',
+          method: 'COD',
+          status: 'PENDING',
+          amountMinor: 70800,
+        }),
+      }),
+    );
+    expect(db.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          paymentStatus: 'PENDING',
+          totalMinor: 70800,
+          notes: 'Keep in bag',
+        }),
+      }),
+    );
+    expect(db.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pay-cod-1' },
+        data: expect.objectContaining({ orderId: 'o1' }),
+      }),
+    );
+    expect(db.idempotencyKey.create).toHaveBeenCalledWith({
+      data: { key: 'cod-ik-1', customerId: 'cust-1', orderId: 'o1' },
+    });
+    expect(db.cart.deleteMany).toHaveBeenCalledWith({
+      where: { customerId: 'cust-1', branchId: 'b1' },
+    });
+    expect(payments.createCodPayment).toHaveBeenCalledWith('cust-1', 70800, expect.anything());
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'COD_ORDER_CREATED', entityId: 'o1', branchId: 'b1' }),
+    );
+  });
+
+  it('never verifies a gateway payment or touches the provider for COD', async () => {
+    const { service, payments } = buildService({});
+
+    await service.createCod('cust-1', { idempotencyKey: 'cod-ik-1', addressId: 'a1' });
+
+    expect(payments.requireFinalVerification).not.toHaveBeenCalled();
+  });
+
+  it('applies the same checkout conflicts as paid orders', async () => {
+    const { service, db } = buildService({
+      resolve: vi.fn().mockResolvedValue(validated({ serviceable: false })),
+    });
+
+    const error = await service
+      .createCod('cust-1', { idempotencyKey: 'cod-ik-1', addressId: 'a1' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(CheckoutConflictException);
+    expect((error as CheckoutConflictException).code).toBe('checkout.unserviceable');
+    expect(db.order.create).not.toHaveBeenCalled();
+    expect(db.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('replays an existing COD order for a reused idempotency key', async () => {
+    const { service, db, payments } = buildService({
+      db: {
+        ...baseDb(),
+        idempotencyKey: {
+          findUnique: vi
+            .fn()
+            .mockResolvedValue({ key: 'cod-ik-1', customerId: 'cust-1', orderId: 'o1' }),
+          create: vi.fn().mockResolvedValue({}),
+        },
+      },
+    });
+
+    const result = await service.createCod('cust-1', {
+      idempotencyKey: 'cod-ik-1',
+      addressId: 'a1',
+    });
+
+    expect(result.id).toBe('o1');
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.payment.create).not.toHaveBeenCalled();
+    expect(payments.createCodPayment).not.toHaveBeenCalled();
   });
 });
 

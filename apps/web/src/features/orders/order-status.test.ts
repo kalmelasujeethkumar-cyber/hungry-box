@@ -49,7 +49,7 @@ describe('order-status helpers', () => {
   });
 
   it('labels every payment status and method', () => {
-    const methods: PaymentMethod[] = ['UPI', 'CARD', 'NET_BANKING', 'WALLET'];
+    const methods: PaymentMethod[] = ['UPI', 'CARD', 'NET_BANKING', 'WALLET', 'COD'];
     const statuses: PaymentStatus[] = [
       'PENDING',
       'AUTHORIZED',

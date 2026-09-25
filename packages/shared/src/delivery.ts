@@ -1,4 +1,4 @@
-import type { OrderStatus } from './orders';
+import type { OrderStatus, PaymentMethod, PaymentStatus } from './orders';
 
 export const DELIVERY_PARTNER_STATUSES = [
   'PENDING_VERIFICATION',
@@ -232,6 +232,8 @@ export interface DeliveryOrderSnapshotDto {
   status: OrderStatus;
   totalMinor: number;
   notes: string | null;
+  paymentMethod: PaymentMethod | null;
+  paymentStatus: PaymentStatus | null;
   branch: DeliveryBranchDto;
   address: {
     houseFlat: string;
@@ -291,6 +293,12 @@ export interface CancelAssignmentInput {
 
 export interface RejectAssignmentInput {
   reason?: string;
+}
+
+/** Confirmation provided by the delivery partner when completing an assignment. */
+export interface DeliverAssignmentInput {
+  /** True when COD cash was collected from the customer. Ignored for pre-paid orders. */
+  cashCollected?: boolean;
 }
 
 export interface DeliveryTrackingDto {

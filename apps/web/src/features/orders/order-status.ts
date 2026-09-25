@@ -35,6 +35,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CARD: 'Card',
   NET_BANKING: 'Net banking',
   WALLET: 'Wallet',
+  COD: 'Cash on delivery',
 };
 
 export const CUSTOMER_CANCELLABLE_STATUSES: readonly OrderStatus[] = ['PLACED', 'CONFIRMED'];

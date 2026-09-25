@@ -53,6 +53,19 @@ export function AssignmentCard({ assignment }: { assignment: DeliveryAssignmentD
         <div>
           <dt className="text-xs font-semibold uppercase text-slate-500">Order total</dt>
           <dd className="mt-0.5 font-bold text-slate-900">{formatPaise(assignment.order.totalMinor)}</dd>
+          {assignment.order.paymentMethod === 'COD' ? (
+            <p
+              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                assignment.order.paymentStatus === 'PAID'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-brand-yellow/40 text-amber-900'
+              }`}
+            >
+              {assignment.order.paymentStatus === 'PAID'
+                ? 'Cash collected'
+                : `Collect ${formatPaise(assignment.order.totalMinor)} cash`}
+            </p>
+          ) : null}
         </div>
       </dl>
       {assignment.notes ? (

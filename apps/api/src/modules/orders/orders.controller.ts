@@ -3,6 +3,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { RequestUser } from '../../common/interfaces/request-user';
 import { CancelOrderDto } from './dto/cancel-order.dto';
+import { CreateCodOrderDto } from './dto/create-cod-order.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CustomerOrderQueryDto } from './dto/customer-order-query.dto';
 import { OrdersService } from './orders.service';
@@ -20,6 +21,11 @@ export class OrdersController {
   @Post()
   create(@CurrentUser() user: RequestUser, @Body() dto: CreateOrderDto) {
     return this.ordersService.create(user.sub, dto);
+  }
+
+  @Post('cod')
+  createCod(@CurrentUser() user: RequestUser, @Body() dto: CreateCodOrderDto) {
+    return this.ordersService.createCod(user.sub, dto);
   }
 
   @Get(':id')

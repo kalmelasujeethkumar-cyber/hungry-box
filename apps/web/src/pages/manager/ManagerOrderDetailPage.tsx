@@ -26,6 +26,12 @@ function eventLabel(kind: string): string {
       return 'Status changed';
     case 'ORDER_CANCELLED':
       return 'Cancelled';
+    case 'COD_ORDER_CREATED':
+      return 'Order placed (cash on delivery)';
+    case 'COD_COLLECTED':
+      return 'Cash collected by partner';
+    case 'COD_COLLECTION_CORRECTED':
+      return 'Cash collection recorded by branch';
     default:
       return kind.replace(/_/g, ' ').toLowerCase();
   }
@@ -38,6 +44,8 @@ export default function ManagerOrderDetailPage(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [collectOpen, setCollectOpen] = useState(false);
+  const [collectReason, setCollectReason] = useState('');
 
   const refresh = useCallback(() => {
     if (!token || !orderId) return;
@@ -91,6 +99,27 @@ export default function ManagerOrderDetailPage(): JSX.Element {
       .finally(() => {
         setBusy(false);
         setCancelOpen(false);
+      });
+  };
+
+  const codPaymentPending = order.payments.find(
+    (payment) => payment.method === 'COD' && payment.status === 'PENDING',
+  );
+
+  const collect = (): void => {
+    if (!token || !codPaymentPending) return;
+    setBusy(true);
+    setError(null);
+    branchOrdersApi
+      .collectCod(order.id, collectReason.trim(), token)
+      .then(setOrder)
+      .catch((err: unknown) =>
+        setError(err instanceof ApiError ? err.message : 'Could not record the collection.'),
+      )
+      .finally(() => {
+        setBusy(false);
+        setCollectOpen(false);
+        setCollectReason('');
       });
   };
 
@@ -219,8 +248,26 @@ export default function ManagerOrderDetailPage(): JSX.Element {
                 <p className="mt-0.5 text-xs text-slate-500">
                   {PAYMENT_STATUS_LABELS[payment.status]}
                 </p>
+                {payment.method === 'COD' && payment.status === 'PAID' && payment.collectedAt ? (
+                  <p className="mt-0.5 text-xs font-semibold text-emerald-700">
+                    Collected{' '}
+                    {new Date(payment.collectedAt).toLocaleString('en-IN')}
+                    {payment.collectedByRole === 'DELIVERY_PARTNER' ? ' · by partner' : ''}
+                    {payment.collectedByRole === 'BRANCH_MANAGER' ? ' · by branch' : ''}
+                  </p>
+                ) : null}
               </div>
             ))}
+            {codPaymentPending ? (
+              <button
+                type="button"
+                onClick={() => setCollectOpen(true)}
+                disabled={busy}
+                className="mt-3 rounded-lg bg-brand-teal px-4 py-2 text-sm font-bold text-white hover:bg-brand-teal/90 disabled:opacity-50"
+              >
+                Cash collected — record it
+              </button>
+            ) : null}
           </section>
 
           <Link
@@ -241,6 +288,26 @@ export default function ManagerOrderDetailPage(): JSX.Element {
         onConfirm={cancel}
         onClose={() => setCancelOpen(false)}
       />
+      <ConfirmDialog
+        open={collectOpen}
+        title="Record cash collection"
+        description={`Mark the ${formatPaise(order.totalMinor)} cash-on-delivery payment for ${order.orderNumber} as collected.`}
+        confirmLabel="Mark as collected"
+        onConfirm={collect}
+        onClose={() => {
+          setCollectOpen(false);
+          setCollectReason('');
+        }}
+      >
+        <textarea
+          value={collectReason}
+          onChange={(event) => setCollectReason(event.target.value)}
+          placeholder="Reason (required) — e.g. cash was collected, app failed during final step"
+          maxLength={300}
+          rows={2}
+          className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-brand-teal focus:outline-none"
+        />
+      </ConfirmDialog>
     </ManagerLayout>
   );
 }

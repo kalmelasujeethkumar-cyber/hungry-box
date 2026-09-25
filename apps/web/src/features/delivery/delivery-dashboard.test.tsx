@@ -129,6 +129,8 @@ const FULL_ASSIGNMENT: DeliveryAssignmentDto = {
     status: 'READY_FOR_PICKUP',
     totalMinor: 40000,
     notes: null,
+    paymentMethod: 'COD',
+    paymentStatus: 'PENDING',
     branch: BRANCH,
     address: {
       houseFlat: '4-72',
@@ -278,11 +280,44 @@ describe('delivery dashboard', () => {
       expect(MOCK_APIS.deliveryPartnerApi.outForDelivery).toHaveBeenCalledWith('assign-1', 'test-token'),
     );
 
-    expect(await screen.findByRole('button', { name: 'Mark as delivered' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Mark as delivered' }));
+    expect(
+      await screen.findByRole('button', { name: 'Collect cash & mark delivered' }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Collect cash & mark delivered' }));
+    await screen.findByRole('heading', { name: /Collect the cash on delivery/ });
+    await user.click(screen.getByRole('button', { name: 'Cash collected — deliver' }));
+    await waitFor(() =>
+      expect(MOCK_APIS.deliveryPartnerApi.deliver).not.toHaveBeenCalled(),
+    );
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Cash collected — deliver' }));
+    await waitFor(() =>
+      expect(MOCK_APIS.deliveryPartnerApi.deliver).toHaveBeenCalledWith('assign-1', 'test-token', true),
+    );
+  });
+
+  it('marks a pre-paid delivery as delivered without a cash prompt', async () => {
+    const user = userEvent.setup();
+    const prepaid: DeliveryAssignmentDto = {
+      ...FULL_ASSIGNMENT,
+      status: 'OUT_FOR_DELIVERY',
+      acceptedAt: '2026-09-23T10:31:00.000Z',
+      pickedUpAt: '2026-09-23T10:35:00.000Z',
+      outForDeliveryAt: '2026-09-23T10:40:00.000Z',
+      order: { ...FULL_ASSIGNMENT.order, paymentMethod: 'UPI', paymentStatus: 'PAID' },
+    };
+    MOCK_APIS.deliveryPartnerApi.myAssignments.mockResolvedValue([
+      { ...ACTIVE_ITEM, status: 'OUT_FOR_DELIVERY' },
+    ]);
+    MOCK_APIS.deliveryPartnerApi.getAssignment.mockResolvedValue(prepaid);
+    renderDashboard();
+
+    const deliverButton = await screen.findByRole('button', { name: 'Mark as delivered' });
+    await user.click(deliverButton);
     await waitFor(() =>
       expect(MOCK_APIS.deliveryPartnerApi.deliver).toHaveBeenCalledWith('assign-1', 'test-token'),
     );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('offers linked navigation while the delivery is active', async () => {

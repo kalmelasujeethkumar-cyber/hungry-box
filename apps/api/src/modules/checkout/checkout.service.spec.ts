@@ -79,7 +79,7 @@ describe('CheckoutService.preview', () => {
 
     expect(preview.status).toBe('ok');
     expect(preview.totalMinor).toBe(70800);
-    expect(preview.availablePaymentMethods).toEqual(['UPI', 'CARD']);
+    expect(preview.availablePaymentMethods).toEqual(['UPI', 'CARD', 'COD']);
     expect(preview.needsConfirmation).toBe(false);
   });
 

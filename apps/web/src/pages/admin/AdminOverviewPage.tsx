@@ -217,6 +217,29 @@ export default function AdminOverviewPage(): JSX.Element {
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-2xl border border-brand-yellow/50 bg-brand-yellow/10 p-5">
+              <p className="text-3xl font-extrabold text-brand-navy">{dashboard.cod.totalOrders}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">Cash-on-delivery orders</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">
+              <p className="text-3xl font-extrabold text-emerald-700">
+                {formatPaise(dashboard.cod.collectedMinor)}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">
+                Cash collected · {dashboard.cod.collectedCount} orders
+              </p>
+            </div>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
+              <p className="text-3xl font-extrabold text-amber-700">
+                {formatPaise(dashboard.cod.uncollectedMinor)}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">
+                Cash pending · {dashboard.cod.uncollectedCount} orders
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
             <MetricCard
               label="Active branches"
               value={String(dashboard.activeBranches)}

@@ -5,6 +5,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import type { RequestUser } from '../../common/interfaces/request-user';
 import type { DeliveryAssignmentStatus } from '@hungrybox/shared';
 import { DeliveryAssignmentService } from './delivery-assignment.service';
+import { DeliverAssignmentDto } from './dto/deliver-assignment.dto';
 import { RejectAssignmentDto } from './dto/reject-assignment.dto';
 
 class MyAssignmentsQueryDto {
@@ -61,7 +62,11 @@ export class DeliveryAssignmentsController {
   }
 
   @Post(':assignmentId/deliver')
-  deliver(@CurrentUser() user: RequestUser, @Param('assignmentId') assignmentId: string) {
-    return this.assignments.deliver(user.sub, assignmentId);
+  deliver(
+    @CurrentUser() user: RequestUser,
+    @Param('assignmentId') assignmentId: string,
+    @Body() dto: DeliverAssignmentDto,
+  ) {
+    return this.assignments.deliver(user.sub, assignmentId, dto);
   }
 }

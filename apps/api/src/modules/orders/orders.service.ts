@@ -10,6 +10,7 @@ import { toCheckoutPreview } from '../checkout/checkout.mapper';
 import { PaymentProviderRegistry } from '../payments/payment-provider.registry';
 import { PaymentsService } from '../payments/payments.service';
 import type { CancelOrderDto } from './dto/cancel-order.dto';
+import type { CreateCodOrderDto } from './dto/create-cod-order.dto';
 import type { CreateOrderDto } from './dto/create-order.dto';
 import {
   orderDetailSelect,
@@ -183,6 +184,148 @@ export class OrdersService {
       entityId: created.id,
       branchId: created.branchId,
       message: `Order placed (${verification.payment.amountMinor} minor units)`,
+    });
+
+    return this.myOrder(customerId, created.id);
+  }
+
+  /**
+   * Places a cash-on-delivery order. No payment is captured up front: the COD
+   * payment row is created as PENDING and stays that way until the delivery
+   * partner collects the cash. All money math still comes from the server.
+   */
+  async createCod(customerId: string, dto: CreateCodOrderDto): Promise<OrderDetailDto> {
+    const db = this.prisma.requireClient();
+    await requireActiveUser(db, customerId);
+
+    const idempotencyKey = dto.idempotencyKey.trim();
+    if (!idempotencyKey) {
+      throw new BadRequestException('An idempotency key is required to place an order');
+    }
+
+    const replay = await db.idempotencyKey.findUnique({ where: { key: idempotencyKey } });
+    if (replay) {
+      await this.audit.record({
+        actorRole: 'CUSTOMER',
+        actorId: customerId,
+        kind: AuditKinds.IDEMPOTENCY_REPLAY,
+        entityType: 'Order',
+        entityId: replay.orderId ?? null,
+        message: `Duplicate order request (idempotency key ${idempotencyKey})`,
+      });
+      if (replay.customerId !== customerId || !replay.orderId) {
+        throw new BadRequestException('Idempotency key is already in use');
+      }
+      return this.myOrder(customerId, replay.orderId);
+    }
+
+    let created: { id: string; branchId: string; totalMinor: number };
+    try {
+      created = await db.$transaction(async (tx) => {
+        const validated = await this.checkoutValidation.resolve(customerId, dto.addressId, tx);
+        const preview = toCheckoutPreview(validated, ['COD']);
+
+        if (!validated.serviceable) {
+          throw new CheckoutConflictException(
+            'checkout.unserviceable',
+            preview,
+            'This address is outside the branch delivery area',
+          );
+        }
+        if (validated.unavailableItems.length > 0) {
+          throw new CheckoutConflictException(
+            'checkout.unavailable',
+            preview,
+            'Some items in your cart are no longer available',
+          );
+        }
+
+        const orderNumber = await this.orderNumbers.next(tx);
+        const codPayment = await this.payments.createCodPayment(
+          customerId,
+          validated.totalMinor,
+          tx,
+        );
+        const order = await tx.order.create({
+          data: {
+            orderNumber,
+            customerId,
+            branchId: validated.branchId,
+            status: 'PLACED',
+            paymentStatus: 'PENDING',
+            subtotalMinor: validated.subtotalMinor,
+            discountMinor: validated.discountMinor,
+            deliveryFeeMinor: validated.deliveryFeeMinor,
+            taxMinor: validated.taxMinor,
+            totalMinor: validated.totalMinor,
+            notes: dto.notes?.trim() || null,
+            items: {
+              create: validated.items.map((item) => ({
+                productId: item.productId,
+                productName: item.productName,
+                quantity: item.quantity,
+                unitPriceMinor: item.unitPriceMinor,
+                unitDiscountMinor: item.unitDiscountMinor,
+                lineSubtotalMinor: item.lineSubtotalMinor,
+                lineDiscountMinor: item.lineDiscountMinor,
+                lineTotalMinor: item.lineTotalMinor,
+              })),
+            },
+            address: {
+              create: toAddressSnapshot(validated.address),
+            },
+            events: {
+              create: [
+                { kind: 'ORDER_CREATED', toStatus: 'PLACED', actorRole: 'CUSTOMER' },
+                { kind: 'COD_ORDER_CREATED', toStatus: 'PLACED', actorRole: 'CUSTOMER' },
+              ],
+            },
+          },
+          select: { id: true },
+        });
+
+        await tx.payment.update({
+          where: { id: codPayment.paymentId },
+          data: { orderId: order.id },
+        });
+        await tx.idempotencyKey.create({
+          data: { key: idempotencyKey, customerId, orderId: order.id },
+        });
+        await tx.cart.deleteMany({
+          where: { customerId, branchId: validated.branchId },
+        });
+        return { id: order.id, branchId: validated.branchId, totalMinor: validated.totalMinor };
+      });
+    } catch (error) {
+      const concurrentReplay = await db.idempotencyKey.findUnique({
+        where: { key: idempotencyKey },
+      });
+      if (
+        concurrentReplay &&
+        concurrentReplay.customerId === customerId &&
+        concurrentReplay.orderId
+      ) {
+        await this.audit.record({
+          actorRole: 'CUSTOMER',
+          actorId: customerId,
+          kind: AuditKinds.IDEMPOTENCY_REPLAY,
+          entityType: 'Order',
+          entityId: concurrentReplay.orderId,
+          message: `Concurrent duplicate order request (idempotency key ${idempotencyKey})`,
+        });
+        return this.myOrder(customerId, concurrentReplay.orderId);
+      }
+      throw error;
+    }
+
+    await this.audit.record({
+      actorRole: 'CUSTOMER',
+      actorId: customerId,
+      kind: AuditKinds.COD_ORDER_CREATED,
+      entityType: 'Order',
+      entityId: created.id,
+      branchId: created.branchId,
+      message: `Cash-on-delivery order placed; amount to collect on delivery: ${created.totalMinor} minor units`,
     });
 
     return this.myOrder(customerId, created.id);

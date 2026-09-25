@@ -182,6 +182,18 @@ export default function OrderDetailPage(): JSX.Element {
                   {order.payments[0] ? PAYMENT_STATUS_LABELS[order.payments[0].status] : '—'}
                 </dd>
               </div>
+              {order.payments[0]?.method === 'COD' && order.payments[0].collectedAt ? (
+                <div className="flex justify-between text-slate-600">
+                  <dt>Collected</dt>
+                  <dd className="font-semibold text-emerald-700">
+                    {formatDateTime(order.payments[0].collectedAt)}
+                    {order.payments[0].collectedByRole === 'DELIVERY_PARTNER' ? ' · by partner' : ''}
+                    {order.payments[0].collectedByRole === 'BRANCH_MANAGER'
+                      ? ' · by branch'
+                      : ''}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </section>
 

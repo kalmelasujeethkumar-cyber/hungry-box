@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { OrderDetailDto, OrderSummaryDto, UserRole } from '@hungrybox/shared';
 import type { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,10 +18,12 @@ import { OrderStateService } from '../orders/order-state.service';
 import type { BranchOrderListQueryDto } from './dto/branch-order-list-query.dto';
 import type { BranchOrderCancelDto } from './dto/branch-order-cancel.dto';
 import type { BranchOrderStatusDto } from './dto/branch-order-status.dto';
+import type { CorrectCodCollectionDto } from './dto/correct-cod-collection.dto';
 
 export interface BranchActor {
   role: UserRole;
   branchId: string | null;
+  userId: string;
 }
 
 @Injectable()
@@ -75,7 +82,7 @@ export class BranchOrdersService {
     if (!order) {
       throw new NotFoundException('Order not found');
     }
-    return toOrderDetail(order);
+    return toOrderDetail(order, { includeCollectorId: true });
   }
 
   async advanceStatus(
@@ -174,6 +181,92 @@ export class BranchOrdersService {
       entityId: order.id,
       branchId: order.branchId,
       message: `Order cancelled by ${actor.role}${reason ? `: ${reason}` : ''}`,
+    });
+
+    return this.get(actor, order.id);
+  }
+
+  /**
+   * Exception correction for COD cash that was collected on delivery but the
+   * app failed before persisting the collection (or the delivery could not be
+   * completed). BRANCH_MANAGER / SUPER_ADMIN records that the cash was in fact
+   * collected. The guarded update only touches still-PENDING COD payments, so
+   * an already-collected payment can never be double-collected.
+   */
+  async collectCod(
+    actor: BranchActor,
+    orderId: string,
+    dto: CorrectCodCollectionDto,
+  ): Promise<OrderDetailDto> {
+    const db = this.prisma.requireClient();
+    const enforcedBranchId = this.enforcedBranchId(actor);
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, branchId: true, orderNumber: true, status: true },
+    });
+    if (!order || (enforcedBranchId !== null && order.branchId !== enforcedBranchId)) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const reason = dto.reason?.trim();
+    if (!reason) {
+      throw new BadRequestException('A reason is required to record a COD collection correction');
+    }
+
+    const now = new Date();
+    await db.$transaction(async (tx) => {
+      const collected = await tx.payment.updateMany({
+        where: { orderId: order.id, method: 'COD', status: 'PENDING' },
+        data: {
+          status: 'PAID',
+          paidAt: now,
+          collectedAt: now,
+          collectedByRole: actor.role,
+          collectedById: actor.userId,
+        },
+      });
+      if (collected.count === 0) {
+        const already = await tx.payment.count({
+          where: { orderId: order.id, method: 'COD', status: 'PAID' },
+        });
+        if (already > 0) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: 'cod.already_collected',
+            message: 'COD cash for this order has already been collected',
+          });
+        }
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'cod.not_pending',
+          message: 'This order has no pending COD payment to correct',
+        });
+      }
+
+      const updatedOrder = await tx.order.updateMany({
+        where: {
+          id: order.id,
+          status: { notIn: ['CANCELLED', 'DELIVERED'] },
+        },
+        data: { paymentStatus: 'PAID' },
+      });
+      if (updatedOrder.count === 0) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'cod.order_not_collectible',
+          message: 'COD collection can only be corrected before the order is delivered',
+        });
+      }
+    });
+
+    await this.audit.record({
+      actorRole: actor.role,
+      actorId: actor.userId,
+      kind: AuditKinds.COD_COLLECTION_CORRECTED,
+      entityType: 'Order',
+      entityId: order.id,
+      branchId: order.branchId,
+      message: `COD collection corrected for order ${order.orderNumber}: ${reason}`,
     });
 
     return this.get(actor, order.id);

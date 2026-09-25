@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type {
   BranchPerformanceDto,
+  CodSummaryDto,
   DashboardBucket,
   DashboardSummaryDto,
   DeliverySummaryDto,
@@ -42,6 +43,8 @@ interface OrderItemRow {
 interface PaymentRow {
   method: PaymentMethod;
   amountMinor: number;
+  status: PaymentStatus;
+  orderId: string | null;
 }
 
 interface AssignmentRow {
@@ -68,6 +71,8 @@ const orderItemSelect = {
 const paymentSelect = {
   method: true,
   amountMinor: true,
+  status: true,
+  orderId: true,
 } as const;
 
 const assignmentSelect = { status: true } as const;
@@ -129,6 +134,7 @@ export class AnalyticsService {
         ordersTyped.filter((order) => order.paymentStatus === 'REFUNDED'),
       ),
       delivery: this.deliverySummary(assignmentsTyped, activePartnerCount),
+      cod: this.codSummary(paymentsTyped, ordersTyped),
       branchComparison: this.branchComparison(ordersTyped, branches),
       topProducts: this.topProducts(itemsTyped),
       timeSeries: this.buildTimeSeries(ordersTyped, from, to, bucket),
@@ -159,7 +165,15 @@ export class AnalyticsService {
         totalMinor: true,
         branch: { select: { name: true } },
         items: { select: { quantity: true } },
-        payments: { select: { method: true }, take: 1 },
+        payments: {
+          take: 1,
+          select: {
+            method: true,
+            collectedAt: true,
+            collectedByRole: true,
+            collectedById: true,
+          },
+        },
       },
     });
 
@@ -226,6 +240,46 @@ export class AnalyticsService {
       outForDelivery: count(['PICKED_UP', 'OUT_FOR_DELIVERY']),
       delivered: count(['DELIVERED']),
       cancelledOrRejected: count(['CANCELLED', 'REJECTED']),
+    };
+  }
+
+  /**
+   * Cash on delivery accounting. Amounts come from COD payment rows (which equal
+   * the server-computed order totals). Uncollected amounts never include
+   * cancelled orders, so a cancelled COD order cannot inflate money due.
+   */
+  private codSummary(payments: PaymentRow[], orders: OrderRow[]): CodSummaryDto {
+    const orderById = new Map(orders.map((order) => [order.id, order]));
+    const visitedOrders = new Set<string>();
+    let totalOrders = 0;
+    let collectedCount = 0;
+    let collectedMinor = 0;
+    let uncollectedCount = 0;
+    let uncollectedMinor = 0;
+
+    for (const payment of payments) {
+      if (payment.method !== 'COD') continue;
+      if (payment.orderId && !visitedOrders.has(payment.orderId)) {
+        visitedOrders.add(payment.orderId);
+        totalOrders += 1;
+      }
+      if (payment.status === 'PAID') {
+        collectedCount += 1;
+        collectedMinor += payment.amountMinor;
+        continue;
+      }
+      const order = payment.orderId ? orderById.get(payment.orderId) : undefined;
+      if (!order || order.status === 'CANCELLED') continue;
+      uncollectedCount += 1;
+      uncollectedMinor += payment.amountMinor;
+    }
+
+    return {
+      totalOrders,
+      collectedCount,
+      collectedMinor,
+      uncollectedCount,
+      uncollectedMinor,
     };
   }
 
@@ -422,7 +476,12 @@ function toOrderCsv(
     totalMinor: number;
     branch: { name: string };
     items: Array<{ quantity: number }>;
-    payments: Array<{ method: PaymentMethod }>;
+    payments: Array<{
+      method: PaymentMethod;
+      collectedAt: Date | null;
+      collectedByRole: string | null;
+      collectedById: string | null;
+    }>;
   }>,
 ): string {
   const header = [
@@ -438,6 +497,9 @@ function toOrderCsv(
     'deliveryFeeMinor',
     'taxMinor',
     'totalMinor',
+    'collectedAt',
+    'collectedByRole',
+    'collectedById',
   ];
   const lines = rows.map((row) =>
     [
@@ -453,6 +515,9 @@ function toOrderCsv(
       String(row.deliveryFeeMinor),
       String(row.taxMinor),
       String(row.totalMinor),
+      row.payments[0]?.collectedAt?.toISOString() ?? '',
+      row.payments[0]?.collectedByRole ?? '',
+      row.payments[0]?.collectedById ?? '',
     ]
       .map(csvCell)
       .join(','),

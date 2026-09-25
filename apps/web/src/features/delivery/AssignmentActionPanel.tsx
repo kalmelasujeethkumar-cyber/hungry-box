@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { DeliveryAssignmentDto } from '@hungrybox/shared';
 import { ApiError, deliveryPartnerApi } from '../../api/client';
 import ConfirmDialog from '../storefront/components/ConfirmDialog';
+import { formatPaise } from '../../lib/money';
 
 function mapsUrlFor(address: DeliveryAssignmentDto['order']['address']): string {
   if (!address) return 'https://www.google.com/maps';
@@ -25,8 +26,10 @@ export default function AssignmentActionPanel({
   const [error, setError] = useState<string | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [codOpen, setCodOpen] = useState(false);
+  const [cashConfirmed, setCashConfirmed] = useState(false);
 
-  const run = (action: () => Promise<DeliveryAssignmentDto>): void => {
+  const run = (action: () => Promise<DeliveryAssignmentDto | void>): void => {
     setBusy(action.name);
     setError(null);
     action()
@@ -55,12 +58,33 @@ export default function AssignmentActionPanel({
     setRejectReason('');
   };
 
+  const isCodPending =
+    assignment.order.paymentMethod === 'COD' && assignment.order.paymentStatus !== 'PAID';
+
+  const confirmDeliverCod = (): void => {
+    if (!cashConfirmed) {
+      setError('Confirm that you collected the cash before completing the delivery.');
+      return;
+    }
+    setCodOpen(false);
+    setCashConfirmed(false);
+    run(() => deliveryPartnerApi.deliver(assignment.id, token, true));
+  };
+
   const primary =
     assignment.status === 'OUT_FOR_DELIVERY'
-      ? {
-          label: 'Mark as delivered',
-          run: () => deliveryPartnerApi.deliver(assignment.id, token),
-        }
+      ? isCodPending
+        ? {
+            label: 'Collect cash & mark delivered',
+            run: () => {
+              setCodOpen(true);
+              return Promise.resolve();
+            },
+          }
+        : {
+            label: 'Mark as delivered',
+            run: () => deliveryPartnerApi.deliver(assignment.id, token),
+          }
       : assignment.status === 'PICKED_UP'
         ? { label: 'Start delivery', run: () => deliveryPartnerApi.outForDelivery(assignment.id, token) }
         : assignment.status === 'ACCEPTED'
@@ -141,6 +165,31 @@ export default function AssignmentActionPanel({
           </a>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={codOpen}
+        title="Collect the cash on delivery"
+        description={`Confirm you received ${formatPaise(assignment.order.totalMinor)} in cash before marking this order delivered. This records the collection against this assignment.`}
+        confirmLabel="Cash collected — deliver"
+        cancelLabel="Not collected yet"
+        onConfirm={confirmDeliverCod}
+        onClose={() => {
+          setCodOpen(false);
+          setCashConfirmed(false);
+        }}
+      >
+        <label className="mt-3 flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={cashConfirmed}
+            onChange={(event) => setCashConfirmed(event.target.checked)}
+            className="mt-0.5 accent-brand-teal"
+          />
+          <span>
+            I received <span className="font-bold">{formatPaise(assignment.order.totalMinor)}</span>{' '}
+            in cash from the customer.
+          </span>
+        </label>
+      </ConfirmDialog>
     </div>
   );
 }

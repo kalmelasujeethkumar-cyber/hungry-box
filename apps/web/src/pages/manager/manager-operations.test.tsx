@@ -32,7 +32,7 @@ const MOCK_AUTH = vi.hoisted(() => ({
 }));
 
 const MOCK_APIS = vi.hoisted(() => ({
-  branchOrdersApi: { list: vi.fn(), get: vi.fn(), advanceStatus: vi.fn(), cancel: vi.fn() },
+  branchOrdersApi: { list: vi.fn(), get: vi.fn(), advanceStatus: vi.fn(), cancel: vi.fn(), collectCod: vi.fn() },
   branchProductsApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), deactivate: vi.fn() },
   branchSettingsApi: { get: vi.fn(), update: vi.fn() },
   branchAuditApi: { list: vi.fn(), exportCsv: vi.fn() },
@@ -75,6 +75,7 @@ function orderSummary(overrides: Partial<OrderSummaryDto> = {}): OrderSummaryDto
     orderNumber: 'HB-20260924-000001',
     status: 'PLACED',
     paymentStatus: 'PAID',
+    paymentMethod: 'UPI',
     branch: BRANCH,
     itemCount: 2,
     subtotalMinor: 40000,
@@ -130,6 +131,9 @@ function orderDetail(overrides: Partial<OrderDetailDto> = {}): OrderDetailDto {
         status: 'PAID',
         amountMinor: 43000,
         currency: 'INR',
+        collectedAt: null,
+        collectedByRole: null,
+        collectedById: null,
       },
     ],
     events: [
@@ -188,6 +192,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   MOCK_APIS.branchOrdersApi.list.mockResolvedValue([orderSummary()]);
   MOCK_APIS.branchOrdersApi.get.mockResolvedValue(orderDetail());
+  MOCK_APIS.branchOrdersApi.collectCod.mockResolvedValue(undefined);
   MOCK_APIS.branchProductsApi.list.mockResolvedValue([branchProduct()]);
   MOCK_APIS.branchSettingsApi.get.mockResolvedValue(BRANCH);
   MOCK_APIS.branchAuditApi.list.mockResolvedValue(AUDIT_RESULT);
@@ -266,6 +271,79 @@ describe('manager orders', () => {
         'test-token',
       ),
     );
+  });
+
+  it('records a pending cash-on-delivery collection with a reason', async () => {
+    const codOrder: OrderDetailDto = {
+      ...orderDetail(),
+      paymentStatus: 'PENDING',
+      paymentMethod: 'COD',
+      payments: [
+        {
+          id: 'pay-cod',
+          provider: 'cod',
+          providerPaymentId: 'cod_1',
+          providerOrderId: null,
+          method: 'COD',
+          status: 'PENDING',
+          amountMinor: 43000,
+          currency: 'INR',
+          collectedAt: null,
+          collectedByRole: null,
+          collectedById: null,
+        },
+      ],
+      events: [
+        {
+          id: 'ev-cod',
+          kind: 'COD_ORDER_CREATED',
+          fromStatus: null,
+          toStatus: 'PLACED',
+          actorRole: 'CUSTOMER' as const,
+          at: '2026-09-24T10:00:00.000Z',
+        },
+      ],
+    };
+    MOCK_APIS.branchOrdersApi.get.mockResolvedValue(codOrder);
+    MOCK_APIS.branchOrdersApi.collectCod.mockResolvedValue({
+      ...codOrder,
+      paymentStatus: 'PAID',
+      paymentMethod: 'COD',
+      payments: [
+        {
+          ...codOrder.payments[0],
+          status: 'PAID',
+          collectedAt: '2026-09-24T11:00:00.000Z',
+          collectedByRole: 'BRANCH_MANAGER',
+          collectedById: 'mgr-1',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/manager/orders/ord-1']}>
+        <Routes>
+          <Route path="/manager/orders/:orderId" element={<ManagerOrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('HB-20260924-000001');
+    expect(await screen.findByText(/Cash on delivery/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cash collected — record it' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Record cash collection' });
+    await user.type(within(dialog).getByPlaceholderText(/Reason \(required\)/), 'Cash received in hand');
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as collected' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.branchOrdersApi.collectCod).toHaveBeenCalledWith(
+        'ord-1',
+        'Cash received in hand',
+        'test-token',
+      ),
+    );
+    expect(await screen.findByText(/Collected .*· by branch/)).toBeInTheDocument();
   });
 });
 

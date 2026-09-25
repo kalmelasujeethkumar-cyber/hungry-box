@@ -17,6 +17,7 @@ import CartContents from '../../features/storefront/components/CartContents';
 import CheckoutPage from '../../pages/customer/CheckoutPage';
 import OrderDetailPage from '../../pages/customer/OrderDetailPage';
 import OrderHistoryPage from '../../pages/customer/OrderHistoryPage';
+import OrderSuccessPage from '../../pages/customer/OrderSuccessPage';
 
 const MOCK_AUTH = vi.hoisted(() => ({
   user: {
@@ -71,7 +72,7 @@ const MOCK_APIS = vi.hoisted(() => ({
   },
   checkoutApi: { preview: vi.fn(), paymentIntent: vi.fn() },
   paymentsApi: { verify: vi.fn(), devSimulate: vi.fn() },
-  ordersApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), cancel: vi.fn() },
+  ordersApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), createCod: vi.fn(), cancel: vi.fn() },
   deliveryTrackingApi: { get: vi.fn() },
 }));
 
@@ -162,6 +163,11 @@ const PREVIEW_OK: CheckoutPreviewDto = {
   availablePaymentMethods: ['UPI', 'CARD'],
 };
 
+const PREVIEW_COD: CheckoutPreviewDto = {
+  ...PREVIEW_OK,
+  availablePaymentMethods: ['UPI', 'CARD', 'COD'],
+};
+
 const INTENT: PaymentIntentDto = {
   paymentId: 'pay-1',
   provider: 'dev',
@@ -184,6 +190,7 @@ const ORDER_BASE: Omit<OrderDetailDto, 'status' | 'events' | 'cancelledAt'> = {
   id: 'ord-1',
   orderNumber: 'HB-20260923-000001',
   paymentStatus: 'PAID',
+  paymentMethod: 'UPI',
   branch: { id: 'br-guntur', name: 'Guntur', code: 'GNT', city: 'Guntur' },
   itemCount: 2,
   subtotalMinor: 49800,
@@ -231,6 +238,9 @@ const ORDER_BASE: Omit<OrderDetailDto, 'status' | 'events' | 'cancelledAt'> = {
       status: 'PAID',
       amountMinor: 43000,
       currency: 'INR',
+      collectedAt: null,
+      collectedByRole: null,
+      collectedById: null,
     },
   ],
 };
@@ -274,6 +284,30 @@ const ORDER_DELIVERED: OrderDetailDto = {
   status: 'DELIVERED',
   cancelledAt: null,
   events: [CREATED_EVENT],
+};
+
+const COD_ORDER_PENDING: OrderDetailDto = {
+  ...ORDER_BASE,
+  status: 'PLACED',
+  cancelledAt: null,
+  events: [CREATED_EVENT],
+  paymentStatus: 'PENDING',
+  paymentMethod: 'COD',
+  payments: [
+    {
+      id: 'p-cod',
+      provider: 'cod',
+      providerPaymentId: 'cod_4',
+      providerOrderId: null,
+      method: 'COD',
+      status: 'PENDING',
+      amountMinor: 43000,
+      currency: 'INR',
+      collectedAt: null,
+      collectedByRole: null,
+      collectedById: null,
+    },
+  ],
 };
 
 const CART_WITH_ITEMS: CartSummary = {
@@ -329,6 +363,7 @@ beforeEach(() => {
   MOCK_APIS.paymentsApi.devSimulate.mockResolvedValue(undefined);
   MOCK_APIS.paymentsApi.verify.mockResolvedValue(VERIFY_OK);
   MOCK_APIS.ordersApi.create.mockResolvedValue(ORDER_PREPARING);
+  MOCK_APIS.ordersApi.createCod.mockResolvedValue(ORDER_PREPARING);
   MOCK_APIS.deliveryTrackingApi.get.mockResolvedValue({
     orderId: 'ord-1',
     orderNumber: 'HB-20260923-000001',
@@ -394,6 +429,55 @@ describe('checkout flow', () => {
 
     expect(await screen.findByText('Insufficient funds')).toBeInTheDocument();
     expect(MOCK_APIS.ordersApi.create).not.toHaveBeenCalled();
+  });
+
+  it('places a cash-on-delivery order straight through without a gateway payment', async () => {
+    const user = userEvent.setup();
+    MOCK_APIS.checkoutApi.preview.mockResolvedValue(PREVIEW_COD);
+    renderCheckout();
+
+    const payButton = await screen.findByRole('button', { name: 'Pay ₹430' });
+    await waitFor(() => expect(payButton).toBeEnabled());
+    await user.click(screen.getByLabelText('Cash on delivery'));
+
+    const placeButton = screen.getByRole('button', {
+      name: 'Place order · Pay ₹430 on delivery',
+    });
+    await user.click(placeButton);
+
+    await waitFor(() =>
+      expect(MOCK_APIS.ordersApi.createCod).toHaveBeenCalledWith(
+        expect.objectContaining({ addressId: 'addr-a', idempotencyKey: expect.any(String) }),
+        'test-token',
+      ),
+    );
+    expect(MOCK_APIS.checkoutApi.paymentIntent).not.toHaveBeenCalled();
+    expect(MOCK_APIS.ordersApi.create).not.toHaveBeenCalled();
+    expect(MOCK_HOOKS.cart.clearCart).toHaveBeenCalled();
+    expect(await screen.findByText('Order placed, view it in your orders')).toBeInTheDocument();
+  });
+
+  it('routes a COD order through the confirm dialog when prices changed', async () => {
+    const user = userEvent.setup();
+    MOCK_APIS.checkoutApi.preview.mockResolvedValue({ ...PREVIEW_COD, needsConfirmation: true });
+    renderCheckout();
+
+    await user.click(await screen.findByLabelText('Cash on delivery'));
+    const placeButton = screen.getByRole('button', {
+      name: 'Place order · Pay ₹430 on delivery',
+    });
+    await user.click(placeButton);
+
+    expect(await screen.findByRole('heading', { name: 'Prices changed' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Place order' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.ordersApi.createCod).toHaveBeenCalledWith(
+        expect.objectContaining({ addressId: 'addr-a' }),
+        'test-token',
+      ),
+    );
+    expect(MOCK_APIS.checkoutApi.paymentIntent).not.toHaveBeenCalled();
   });
 
   it('asks for a paid-updated-total confirmation when prices changed since the cart', async () => {
@@ -468,6 +552,7 @@ describe('order history', () => {
       orderNumber: 'HB-20260923-000001',
       status: 'PLACED',
       paymentStatus: 'PAID',
+      paymentMethod: 'UPI',
       branch: { id: 'br-guntur', name: 'Guntur', code: 'GNT', city: 'Guntur' },
       itemCount: 2,
       subtotalMinor: 49800,
@@ -483,6 +568,7 @@ describe('order history', () => {
       orderNumber: 'HB-20260922-000003',
       status: 'DELIVERED',
       paymentStatus: 'PAID',
+      paymentMethod: 'UPI',
       branch: { id: 'br-guntur', name: 'Guntur', code: 'GNT', city: 'Guntur' },
       itemCount: 1,
       subtotalMinor: 8000,
@@ -498,6 +584,7 @@ describe('order history', () => {
       orderNumber: 'HB-20260921-000002',
       status: 'CANCELLED',
       paymentStatus: 'PAID',
+      paymentMethod: 'UPI',
       branch: { id: 'br-guntur', name: 'Guntur', code: 'GNT', city: 'Guntur' },
       itemCount: 1,
       subtotalMinor: 8000,
@@ -575,6 +662,34 @@ describe('order detail', () => {
     expect(screen.getByText('UPI')).toBeInTheDocument();
     expect(screen.getByText('Paid')).toBeInTheDocument();
     expect(MOCK_APIS.ordersApi.get).toHaveBeenCalledWith('ord-1', 'test-token');
+  });
+
+  it('marks where cash was collected for a closed COD payment', async () => {
+    MOCK_APIS.ordersApi.get.mockResolvedValue({
+      ...COD_ORDER_PENDING,
+      paymentStatus: 'PAID',
+      events: [CREATED_EVENT],
+      payments: [
+        {
+          ...COD_ORDER_PENDING.payments[0],
+          status: 'PAID',
+          collectedAt: '2026-09-24T09:00:00.000Z',
+          collectedByRole: 'DELIVERY_PARTNER',
+          collectedById: 'dp-1',
+        },
+      ],
+    });
+    render(
+      <MemoryRouter initialEntries={['/customer/orders/ord-1']}>
+        <Routes>
+          <Route path="/customer/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Cash on delivery')).toBeInTheDocument();
+    expect(screen.getByText('Paid')).toBeInTheDocument();
+    expect(screen.getByText(/· by partner$/)).toBeInTheDocument();
   });
 
   it('hides the cancel action once the order is out of the cancellable window', async () => {
@@ -677,5 +792,35 @@ describe('cart checkout button', () => {
       />,
     );
     expect(screen.getByRole('button', { name: 'Proceed to checkout' })).toBeDisabled();
+  });
+});
+
+describe('order success page', () => {
+  it('shows the cash amount to pay on delivery for a COD order', async () => {
+    MOCK_APIS.ordersApi.get.mockResolvedValue(COD_ORDER_PENDING);
+    render(
+      <MemoryRouter initialEntries={['/customer/checkout/success/ord-1']}>
+        <Routes>
+          <Route path="/customer/checkout/success/:orderId" element={<OrderSuccessPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('To pay on delivery')).toBeInTheDocument();
+    expect(screen.getByText('₹430 — in cash')).toBeInTheDocument();
+  });
+
+  it('keeps the paid label for an online-paid order', async () => {
+    MOCK_APIS.ordersApi.get.mockResolvedValue(ORDER_PREPARING);
+    render(
+      <MemoryRouter initialEntries={['/customer/checkout/success/ord-1']}>
+        <Routes>
+          <Route path="/customer/checkout/success/:orderId" element={<OrderSuccessPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Payment')).toBeInTheDocument();
+    expect(screen.getByText('Paid')).toBeInTheDocument();
   });
 });

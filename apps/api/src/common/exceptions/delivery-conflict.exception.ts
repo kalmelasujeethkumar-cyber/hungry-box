@@ -11,7 +11,8 @@ export type DeliveryConflictCode =
   | 'delivery.partner_suspended'
   | 'delivery.partner_offline'
   | 'delivery.active_delivery_pending'
-  | 'delivery.location_offline';
+  | 'delivery.location_offline'
+  | 'delivery.cash_not_collected';
 
 export class DeliveryConflictException extends ConflictException {
   readonly code: DeliveryConflictCode;

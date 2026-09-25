@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  DeliverAssignmentInput,
   DeliveryAssignmentDto,
   DeliveryAssignmentListItemDto,
   DeliveryAssignmentStatus,
@@ -58,6 +59,12 @@ const assignmentDetailSelect = {
       status: true,
       totalMinor: true,
       notes: true,
+      paymentStatus: true,
+      payments: {
+        orderBy: { createdAt: 'asc' },
+        take: 1,
+        select: { id: true, method: true, status: true },
+      },
       branch: { select: { id: true, name: true, code: true, city: true } },
       address: {
         select: {
@@ -437,54 +444,129 @@ export class DeliveryAssignmentService {
     return this.loadDetailOrThrow(assignmentId);
   }
 
-  async deliver(userId: string, assignmentId: string): Promise<DeliveryAssignmentDto> {
+  async deliver(
+    userId: string,
+    assignmentId: string,
+    input?: DeliverAssignmentInput,
+  ): Promise<DeliveryAssignmentDto> {
     const db = this.prisma.requireClient();
     const profile = await this.partnerProfileFor(userId);
     this.requireOperationalPartner(profile);
     const now = new Date();
-    await db.$transaction(async (tx) => {
-      const assignment = await tx.deliveryAssignment.findFirst({
-        where: { id: assignmentId, deliveryPartnerId: profile.id },
-        select: { id: true, status: true, orderId: true },
-      });
-      if (!assignment) {
-        throw new NotFoundException('Assignment not found');
-      }
-      if (assignment.status !== 'OUT_FOR_DELIVERY') {
-        throw new DeliveryConflictException(
-          'delivery.wrong_state',
-          'Assignment must be out for delivery first',
+    try {
+      await db.$transaction(async (tx) => {
+        const assignment = await tx.deliveryAssignment.findFirst({
+          where: { id: assignmentId, deliveryPartnerId: profile.id },
+          select: { id: true, status: true, orderId: true },
+        });
+        if (!assignment) {
+          throw new NotFoundException('Assignment not found');
+        }
+        if (assignment.status !== 'OUT_FOR_DELIVERY') {
+          throw new DeliveryConflictException(
+            'delivery.wrong_state',
+            'Assignment must be out for delivery first',
+          );
+        }
+        const orderRow = await tx.order.findUnique({
+          where: { id: assignment.orderId },
+          select: {
+            id: true,
+            status: true,
+            orderNumber: true,
+            paymentStatus: true,
+            payments: {
+              where: { method: 'COD' },
+              take: 1,
+              select: { id: true, status: true },
+            },
+          },
+        });
+        if (!orderRow) {
+          throw new NotFoundException('Order not found');
+        }
+
+        const codPayment = orderRow.payments?.[0] ?? null;
+        const collectedNow =
+          codPayment != null && codPayment.status !== 'PAID' && input?.cashCollected === true;
+
+        if (codPayment != null && codPayment.status !== 'PAID' && !collectedNow) {
+          throw new DeliveryConflictException(
+            'delivery.cash_not_collected',
+            'Collect the cash on delivery before completing the delivery',
+          );
+        }
+
+        await tx.deliveryAssignment.update({
+          where: { id: assignment.id },
+          data: { status: 'DELIVERED', deliveredAt: now },
+        });
+        await this.advanceOrder(
+          tx,
+          orderRow.id,
+          orderRow.status,
+          'DELIVERED',
+          'DELIVERY_PARTNER',
+          codPayment != null ? { paymentStatus: 'PAID' } : undefined,
         );
-      }
-      const orderRow = await tx.order.findUnique({
-        where: { id: assignment.orderId },
-        select: { id: true, status: true },
+        if (codPayment != null && collectedNow) {
+          await tx.payment.update({
+            where: { id: codPayment.id },
+            data: {
+              status: 'PAID',
+              paidAt: now,
+              collectedAt: now,
+              collectedByRole: 'DELIVERY_PARTNER',
+              collectedById: userId,
+            },
+          });
+          await this.audit.record(
+            {
+              actorRole: 'DELIVERY_PARTNER',
+              actorId: userId,
+              kind: AuditKinds.COD_COLLECTED,
+              entityType: 'Payment',
+              entityId: codPayment.id,
+              branchId: profile.branchId,
+              message: `COD cash collected for order ${orderRow.orderNumber}`,
+            },
+            tx,
+          );
+        }
+        await tx.deliveryPartnerProfile.update({
+          where: { id: profile.id },
+          data: { availability: DeliveryAvailability.ONLINE },
+        });
+        await this.audit.record(
+          {
+            actorRole: 'DELIVERY_PARTNER',
+            actorId: userId,
+            kind: AuditKinds.DELIVERY_COMPLETED,
+            entityType: 'delivery_assignment',
+            entityId: assignment.id,
+            branchId: profile.branchId,
+            message: 'Order delivered',
+          },
+          tx,
+        );
       });
-      if (!orderRow) {
-        throw new NotFoundException('Order not found');
-      }
-      await tx.deliveryAssignment.update({
-        where: { id: assignment.id },
-        data: { status: 'DELIVERED', deliveredAt: now },
-      });
-      await this.advanceOrder(tx, orderRow.id, orderRow.status, 'DELIVERED', 'DELIVERY_PARTNER');
-      await tx.deliveryPartnerProfile.update({
-        where: { id: profile.id },
-        data: { availability: DeliveryAvailability.ONLINE },
-      });
-      await this.audit.record(
-        {
+    } catch (error) {
+      if (
+        error instanceof DeliveryConflictException &&
+        error.code === 'delivery.cash_not_collected'
+      ) {
+        await this.audit.record({
           actorRole: 'DELIVERY_PARTNER',
           actorId: userId,
-          kind: AuditKinds.DELIVERY_COMPLETED,
+          kind: AuditKinds.COD_COLLECTION_FAILED,
           entityType: 'delivery_assignment',
-          entityId: assignment.id,
+          entityId: assignmentId,
           branchId: profile.branchId,
-          message: 'Order delivered',
-        },
-        tx,
-      );
-    });
+          message: 'COD cash not collected; delivery was not completed',
+        });
+      }
+      throw error;
+    }
     await this.announce(assignmentId, 'delivery.delivered', 'DELIVERED', true, false);
     return this.loadDetailOrThrow(assignmentId);
   }
@@ -521,6 +603,7 @@ export class DeliveryAssignmentService {
     fromStatus: OrderStatus,
     to: 'OUT_FOR_DELIVERY' | 'DELIVERED',
     actorRole: string,
+    options?: { paymentStatus: 'PENDING' | 'PAID' },
   ): Promise<void> {
     this.orderState.assertAdvance(fromStatus, to);
     const now = new Date();
@@ -528,6 +611,9 @@ export class DeliveryAssignmentService {
     const data: Prisma.OrderUpdateInput = { status: to };
     if (timestampField) {
       (data as Record<string, unknown>)[timestampField] = now;
+    }
+    if (options?.paymentStatus) {
+      data.paymentStatus = options.paymentStatus;
     }
     await tx.order.update({ where: { id: orderId }, data });
     await tx.orderEvent.create({

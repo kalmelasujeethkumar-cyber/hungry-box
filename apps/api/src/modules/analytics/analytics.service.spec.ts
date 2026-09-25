@@ -60,9 +60,9 @@ describe('AnalyticsService.dashboard', () => {
       },
       payment: {
         findMany: vi.fn().mockResolvedValue([
-          { method: 'COD', amountMinor: 10000 },
-          { method: 'UPI', amountMinor: 5000 },
-          { method: 'COD', amountMinor: 25000 },
+          { method: 'COD', amountMinor: 10000, orderId: 'o1', status: 'PAID' },
+          { method: 'UPI', amountMinor: 5000, orderId: 'o2', status: 'REFUNDED' },
+          { method: 'COD', amountMinor: 25000, orderId: 'o3', status: 'PAID' },
         ]),
       },
       branch: {
@@ -108,6 +108,13 @@ describe('AnalyticsService.dashboard', () => {
       { method: 'COD', count: 2, totalMinor: 35000 },
       { method: 'UPI', count: 1, totalMinor: 5000 },
     ]);
+    expect(result.cod).toEqual({
+      totalOrders: 2,
+      collectedCount: 2,
+      collectedMinor: 35000,
+      uncollectedCount: 0,
+      uncollectedMinor: 0,
+    });
     expect(result.delivery).toEqual({
       activePartners: 4,
       assigned: 1,
@@ -191,6 +198,40 @@ describe('AnalyticsService.dashboard', () => {
     expect(wide.timeSeries[0].label).toMatch(/^Week of/);
   });
 
+  it('reports uncollected COD net of cancelled orders', async () => {
+    const db = {
+      order: {
+        findMany: vi.fn().mockResolvedValue([
+          order({ id: 'o1', status: 'OUT_FOR_DELIVERY', paymentStatus: 'PENDING', totalMinor: 10000 }),
+          order({ id: 'o2', status: 'CANCELLED', paymentStatus: 'PENDING', totalMinor: 8000 }),
+          order({ id: 'o3', status: 'DELIVERED', paymentStatus: 'PAID', totalMinor: 55000 }),
+        ]),
+      },
+      orderItem: { findMany: vi.fn().mockResolvedValue([]) },
+      payment: {
+        findMany: vi.fn().mockResolvedValue([
+          { method: 'COD', amountMinor: 10000, orderId: 'o1', status: 'PENDING' },
+          { method: 'COD', amountMinor: 8000, orderId: 'o2', status: 'PENDING' },
+          { method: 'COD', amountMinor: 55000, orderId: 'o3', status: 'PAID' },
+        ]),
+      },
+      branch: { findMany: vi.fn().mockResolvedValue([]) },
+      deliveryPartnerProfile: { count: vi.fn().mockResolvedValue(0) },
+      deliveryAssignment: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const service = buildService(db);
+
+    const result = await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(result.cod).toEqual({
+      totalOrders: 3,
+      collectedCount: 1,
+      collectedMinor: 55000,
+      uncollectedCount: 1,
+      uncollectedMinor: 10000,
+    });
+  });
+
   it('rejects a reversed range', async () => {
     const db = {
       order: { findMany: vi.fn().mockResolvedValue([]) },
@@ -235,10 +276,10 @@ describe('AnalyticsService.ordersReportCsv', () => {
     const csv = await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
 
     expect(csv.split('\n')[0]).toBe(
-      'orderNumber,placedAt,branchName,status,paymentStatus,paymentMethod,itemCount,subtotalMinor,discountMinor,deliveryFeeMinor,taxMinor,totalMinor',
+      'orderNumber,placedAt,branchName,status,paymentStatus,paymentMethod,itemCount,subtotalMinor,discountMinor,deliveryFeeMinor,taxMinor,totalMinor,collectedAt,collectedByRole,collectedById',
     );
     expect(csv).toContain('"Guntur, Andhra Pradesh"');
-    expect(csv).toContain(',3,29900,0,4000,1000,34900');
+    expect(csv).toContain(',3,29900,0,4000,1000,34900,,,');
     expect(db.order.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -249,6 +290,45 @@ describe('AnalyticsService.ordersReportCsv', () => {
         }),
         take: 1000,
       }),
+    );
+  });
+
+  it('exposes COD collection columns in the row data', async () => {
+    const db = {
+      order: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            orderNumber: 'HB-1025',
+            placedAt: new Date('2026-01-06T10:00:00.000Z'),
+            status: 'DELIVERED',
+            paymentStatus: 'PAID',
+            subtotalMinor: 39900,
+            discountMinor: 0,
+            deliveryFeeMinor: 4000,
+            taxMinor: 1200,
+            totalMinor: 45100,
+            branch: { name: 'Guntur' },
+            items: [{ quantity: 1 }],
+            payments: [
+              {
+                method: 'COD',
+                collectedAt: new Date('2026-01-06T11:30:00.000Z'),
+                collectedByRole: 'DELIVERY_PARTNER',
+                collectedById: 'u-partner',
+              },
+            ],
+          },
+        ]),
+      },
+    };
+    const service = buildService(db);
+
+    const csv = await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(csv).toContain('COD');
+    expect(csv).toContain('2026-01-06T11:30:00.000Z,DELIVERY_PARTNER,u-partner');
+    expect(csv.split('\n')[1]).toBe(
+      'HB-1025,2026-01-06T10:00:00.000Z,Guntur,DELIVERED,PAID,COD,1,39900,0,4000,1200,45100,2026-01-06T11:30:00.000Z,DELIVERY_PARTNER,u-partner',
     );
   });
 });

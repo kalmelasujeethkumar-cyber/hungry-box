@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { CheckoutPreviewDto, PaymentIntentDto } from '@hungrybox/shared';
+import type { CheckoutPreviewDto, PaymentIntentDto, PaymentMethod } from '@hungrybox/shared';
 import { CheckoutConflictException } from '../../common/exceptions/checkout-conflict.exception';
 import { PaymentProviderRegistry } from '../payments/payment-provider.registry';
 import { PaymentsService } from '../payments/payments.service';
@@ -15,10 +15,18 @@ export class CheckoutService {
     private readonly paymentProviders: PaymentProviderRegistry,
   ) {}
 
+  /**
+   * Cash on delivery is always offered on top of the configured gateway methods.
+   * COD is placed through its own dedicated path; it is never a payment intent.
+   */
+  async previewMethods(): Promise<PaymentMethod[]> {
+    const provider = await this.paymentProviders.current();
+    return Array.from(new Set<PaymentMethod>([...provider.supportedMethods, 'COD']));
+  }
+
   async preview(customerId: string, addressId: string): Promise<CheckoutPreviewDto> {
     const validated = await this.checkoutValidation.resolve(customerId, addressId);
-    const provider = await this.paymentProviders.current();
-    return toCheckoutPreview(validated, provider.supportedMethods);
+    return toCheckoutPreview(validated, await this.previewMethods());
   }
 
   async createPaymentIntent(

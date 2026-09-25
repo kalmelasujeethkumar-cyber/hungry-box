@@ -104,6 +104,13 @@ function dashboard(overrides: Partial<DashboardSummaryDto> = {}): DashboardSumma
     inactiveBranches: 0,
     orderStatusBreakdown: [{ status: 'PLACED', count: 12, totalMinor: 2300000 }],
     paymentMethodBreakdown: [{ method: 'UPI', count: 10, totalMinor: 2000000 }],
+    cod: {
+      totalOrders: 4,
+      collectedCount: 3,
+      collectedMinor: 60000,
+      uncollectedCount: 1,
+      uncollectedMinor: 20000,
+    },
     cancellations: { count: 1, amountMinor: 50000 },
     refunds: { count: 0, amountMinor: 0 },
     delivery: {
@@ -144,6 +151,7 @@ function orderSummary(overrides: Partial<OrderSummaryDto> = {}): OrderSummaryDto
     orderNumber: 'HB-20260924-000001',
     status: 'PLACED',
     paymentStatus: 'PAID',
+    paymentMethod: 'UPI',
     branch: BRANCH_GUNTUR,
     itemCount: 2,
     subtotalMinor: 40000,
@@ -289,6 +297,23 @@ describe('admin overview', () => {
         'test-token',
       ),
     );
+  });
+
+  it('shows cash-on-delivery collection summaries', async () => {
+    render(
+      <MemoryRouter>
+        <AdminOverviewPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Cash-on-delivery orders')).toBeInTheDocument();
+    expect(screen.getByText('Cash-on-delivery orders').previousElementSibling?.textContent).toBe(
+      '4',
+    );
+    expect(screen.getByText('Cash collected · 3 orders')).toBeInTheDocument();
+    expect(screen.getByText('₹600')).toBeInTheDocument();
+    expect(screen.getByText('Cash pending · 1 orders')).toBeInTheDocument();
+    expect(screen.getByText('₹200')).toBeInTheDocument();
   });
 });
 

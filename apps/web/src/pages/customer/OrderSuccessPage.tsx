@@ -76,9 +76,15 @@ export default function OrderSuccessPage(): JSX.Element {
           </div>
           <div className="rounded-xl bg-slate-50 p-3 text-left">
             <dt className="text-xs uppercase tracking-wide text-slate-500">
-              To pay on delivery page
+              {order.payments[0]?.method === 'COD'
+                ? 'To pay on delivery'
+                : 'Payment'}
             </dt>
-            <dd className="mt-1 font-semibold text-slate-800">{formatPaise(order.totalMinor)}</dd>
+            <dd className="mt-1 font-semibold text-slate-800">
+              {order.payments[0]?.method === 'COD'
+                ? `${formatPaise(order.totalMinor)} — in cash`
+                : 'Paid'}
+            </dd>
           </div>
         </dl>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
