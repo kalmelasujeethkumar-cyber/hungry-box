@@ -257,12 +257,7 @@ export class ProductsService {
     let persisted: { id: string; productId: string };
     try {
       persisted = await db.$transaction(async (tx) => {
-        const product = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM "Product" WHERE id = ${productId} FOR UPDATE
-        `;
-        if (product.length === 0) {
-          throw new NotFoundException('Product not found');
-        }
+        await this.requireProductLock(tx, productId);
         const count = await tx.productImage.count({ where: { productId } });
         if (count >= MAX_PRODUCT_IMAGES) {
           throw new BadRequestException(`A product can have at most ${MAX_PRODUCT_IMAGES} images`);
@@ -314,6 +309,7 @@ export class ProductsService {
       if (!image) {
         throw new NotFoundException('Image not found');
       }
+      await this.requireProductLock(tx, image.productId);
       if (!image.isPrimary) {
         await tx.productImage.updateMany({
           where: { productId: image.productId, isPrimary: true },
@@ -357,6 +353,8 @@ export class ProductsService {
         throw new BadRequestException('All images must belong to the same product and exist');
       }
       const [product] = productIds;
+
+      await this.requireProductLock(tx, product);
 
       const existing = await tx.productImage.findMany({
         where: { productId: product },
@@ -418,6 +416,7 @@ export class ProductsService {
       if (!image) {
         throw new NotFoundException('Image not found');
       }
+      await this.requireProductLock(tx, image.productId);
       await tx.productImage.delete({ where: { id: imageId } });
       if (image.isPrimary) {
         const next = await tx.productImage.findFirst({
@@ -462,6 +461,18 @@ export class ProductsService {
     return row;
   }
 
+  private async requireProductLock(
+    db: PrismaClient | Prisma.TransactionClient,
+    productId: string,
+  ): Promise<void> {
+    const locked = await db.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Product" WHERE id = ${productId} FOR UPDATE
+    `;
+    if (locked.length === 0) {
+      throw new NotFoundException('Product not found');
+    }
+  }
+
   private async bestEffortDeleteAsset(
     entityType: string,
     entityId: string,
@@ -471,13 +482,17 @@ export class ProductsService {
     try {
       await this.mediaStorage.deletePublicImage(publicId);
     } catch {
-      await this.audit.record({
-        actorRole: 'SYSTEM',
-        kind: AuditKinds.MEDIA_CLEANUP_FAILED,
-        entityType,
-        entityId,
-        message,
-      });
+      try {
+        await this.audit.record({
+          actorRole: 'SYSTEM',
+          kind: AuditKinds.MEDIA_CLEANUP_FAILED,
+          entityType,
+          entityId,
+          message,
+        });
+      } catch {
+        // Cleanup is best-effort by contract; a failing audit write must not surface.
+      }
     }
   }
 

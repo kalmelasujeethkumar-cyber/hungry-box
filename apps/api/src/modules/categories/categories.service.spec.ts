@@ -155,16 +155,30 @@ describe('CategoriesService.listAdmin', () => {
 });
 
 describe('CategoriesService.uploadImage', () => {
-  it('uploads the first category image and audits CATEGORY_IMAGE_UPLOADED', async () => {
-    const db = {
+  function uploadDb(imagePublicId: string | null, updateFailure?: Error) {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'c1' }]),
       category: {
-        findUnique: vi.fn().mockResolvedValue({ id: 'c1', imagePublicId: null }),
-        update: vi.fn().mockResolvedValue(categoryRow()),
+        findUnique: vi.fn().mockResolvedValue({ id: 'c1', imagePublicId }),
+        update: updateFailure
+          ? vi.fn().mockRejectedValue(updateFailure)
+          : vi.fn().mockResolvedValue(categoryRow()),
+      },
+    };
+    const db = {
+      $transaction: vi.fn((fn: (client: typeof tx) => unknown) => fn(tx)),
+      category: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'c1', imagePublicId }),
         findUniqueOrThrow: vi
           .fn()
           .mockResolvedValue({ ...categoryRow(), imageUrl: 'https://cdn.example/category.jpg' }),
       },
     };
+    return { db, tx };
+  }
+
+  it('uploads the first category image and audits CATEGORY_IMAGE_UPLOADED', async () => {
+    const { db, tx } = uploadDb(null);
     const { service, audit, mediaStorage } = buildService(db);
 
     const result = await service.uploadImage(SUPER_ADMIN, 'c1', pngFile());
@@ -175,7 +189,8 @@ describe('CategoriesService.uploadImage', () => {
         publicId: expect.any(String),
       }),
     );
-    expect(db.category.update).toHaveBeenCalledWith({
+    expect(Array.from(tx.$queryRaw.mock.calls[0][0]).join('')).toContain('FOR UPDATE');
+    expect(tx.category.update).toHaveBeenCalledWith({
       where: { id: 'c1' },
       data: {
         imageUrl: 'https://cdn.example/category.jpg',
@@ -183,6 +198,7 @@ describe('CategoriesService.uploadImage', () => {
         imageResourceType: 'image',
       },
     });
+    expect(mediaStorage.deletePublicImage).not.toHaveBeenCalled();
     expect(result.imageUrl).toBe('https://cdn.example/category.jpg');
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ kind: AuditKinds.CATEGORY_IMAGE_UPLOADED, entityId: 'c1' }),
@@ -190,29 +206,27 @@ describe('CategoriesService.uploadImage', () => {
   });
 
   it('replaces an existing image, deleting only the old asset, and audits CATEGORY_IMAGE_REPLACED', async () => {
-    const db = {
-      category: {
-        findUnique: vi
-          .fn()
-          .mockResolvedValue({ id: 'c1', imagePublicId: 'public/categories/c1/old' }),
-        update: vi.fn().mockResolvedValue(categoryRow()),
-        findUniqueOrThrow: vi
-          .fn()
-          .mockResolvedValue({ ...categoryRow(), imageUrl: 'https://cdn.example/category.jpg' }),
-      },
-    };
+    const { db, tx } = uploadDb('public/categories/c1/old');
     const { service, audit, mediaStorage } = buildService(db);
 
     await service.uploadImage(SUPER_ADMIN, 'c1', pngFile());
 
+    expect(tx.category.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: {
+        imageUrl: 'https://cdn.example/category.jpg',
+        imagePublicId: 'public/categories/c1/abcd-1234',
+        imageResourceType: 'image',
+      },
+    });
     expect(mediaStorage.deletePublicImage).toHaveBeenCalledWith('public/categories/c1/old');
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ kind: AuditKinds.CATEGORY_IMAGE_REPLACED, entityId: 'c1' }),
     );
   });
 
-  it('throws NotFoundException for a missing category', async () => {
-    const db = { category: { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn() } };
+  it('throws NotFoundException for a missing category without uploading', async () => {
+    const db = { category: { findUnique: vi.fn().mockResolvedValue(null) } };
     const { service, mediaStorage } = buildService(db);
 
     await expect(service.uploadImage(SUPER_ADMIN, 'missing', pngFile())).rejects.toThrow(
@@ -222,9 +236,7 @@ describe('CategoriesService.uploadImage', () => {
   });
 
   it('rejects an invalid file before any external call', async () => {
-    const db = {
-      category: { findUnique: vi.fn().mockResolvedValue({ id: 'c1', imagePublicId: null }) },
-    };
+    const db = { category: { findUnique: vi.fn().mockResolvedValue({ id: 'c1' }) } };
     const { service, mediaStorage } = buildService(db);
 
     await expect(
@@ -234,12 +246,7 @@ describe('CategoriesService.uploadImage', () => {
   });
 
   it('cleans up the new asset and audits the failure when the DB write fails', async () => {
-    const db = {
-      category: {
-        findUnique: vi.fn().mockResolvedValue({ id: 'c1', imagePublicId: null }),
-        update: vi.fn().mockRejectedValue(new Error('db down')),
-      },
-    };
+    const { db } = uploadDb(null, new Error('db down'));
     const mediaStorage = fakeProvider({
       deletePublicImage: vi.fn().mockRejectedValue(new Error('cloud down')),
     });
@@ -255,24 +262,53 @@ describe('CategoriesService.uploadImage', () => {
       }),
     );
   });
+
+  it('swallows cleanup audit failures and rethrows the original DB error', async () => {
+    const { db } = uploadDb(null, new Error('db down'));
+    const prisma = { requireClient: vi.fn().mockReturnValue(db) } as unknown as PrismaService;
+    const audit = {
+      record: vi.fn((entry: { kind: string }) =>
+        entry.kind === AuditKinds.MEDIA_CLEANUP_FAILED
+          ? Promise.reject(new Error('audit db down'))
+          : Promise.resolve(),
+      ),
+    } as unknown as AuditService;
+    const mediaStorage = fakeProvider({
+      deletePublicImage: vi.fn().mockRejectedValue(new Error('cloud down')),
+    });
+    const service = new CategoriesService(prisma, audit, mediaStorage);
+
+    await expect(service.uploadImage(SUPER_ADMIN, 'c1', pngFile())).rejects.toThrow('db down');
+  });
 });
 
 describe('CategoriesService.removeImage', () => {
-  it('clears the image fields, deletes the asset and audits CATEGORY_IMAGE_REMOVED', async () => {
-    const db = {
+  function removeDb(
+    imagePublicId: string | null,
+    lockedRows: Array<{ id: string }> = [{ id: 'c1' }],
+  ) {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue(lockedRows),
       category: {
-        findUnique: vi
-          .fn()
-          .mockResolvedValue({ id: 'c1', imagePublicId: 'public/categories/c1/old' }),
+        findUnique: vi.fn().mockResolvedValue({ id: 'c1', imagePublicId }),
         update: vi.fn().mockResolvedValue(categoryRow()),
-        findUniqueOrThrow: vi.fn().mockResolvedValue(categoryRow()),
       },
     };
+    const db = {
+      $transaction: vi.fn((fn: (client: typeof tx) => unknown) => fn(tx)),
+      category: { findUniqueOrThrow: vi.fn().mockResolvedValue(categoryRow()) },
+    };
+    return { db, tx };
+  }
+
+  it('clears the image fields, deletes the asset and audits CATEGORY_IMAGE_REMOVED', async () => {
+    const { db, tx } = removeDb('public/categories/c1/old');
     const { service, audit, mediaStorage } = buildService(db);
 
     const result = await service.removeImage(SUPER_ADMIN, 'c1');
 
-    expect(db.category.update).toHaveBeenCalledWith({
+    expect(Array.from(tx.$queryRaw.mock.calls[0][0]).join('')).toContain('FOR UPDATE');
+    expect(tx.category.update).toHaveBeenCalledWith({
       where: { id: 'c1' },
       data: { imageUrl: null, imagePublicId: null, imageResourceType: null },
     });
@@ -284,9 +320,7 @@ describe('CategoriesService.removeImage', () => {
   });
 
   it('throws BadRequestException when the category has no image', async () => {
-    const db = {
-      category: { findUnique: vi.fn().mockResolvedValue({ id: 'c1', imagePublicId: null }) },
-    };
+    const { db } = removeDb(null);
     const { service, mediaStorage } = buildService(db);
 
     await expect(service.removeImage(SUPER_ADMIN, 'c1')).rejects.toThrow(BadRequestException);
@@ -294,22 +328,15 @@ describe('CategoriesService.removeImage', () => {
   });
 
   it('throws NotFoundException for a missing category', async () => {
-    const db = { category: { findUnique: vi.fn().mockResolvedValue(null) } };
-    const { service } = buildService(db);
+    const { db } = removeDb(null, []);
+    const { service, mediaStorage } = buildService(db);
 
-    await expect(service.removeImage(SUPER_ADMIN, 'missing')).rejects.toThrow(NotFoundException);
+    await expect(service.removeImage(SUPER_ADMIN, 'c1')).rejects.toThrow(NotFoundException);
+    expect(mediaStorage.deletePublicImage).not.toHaveBeenCalled();
   });
 
   it('audits MEDIA_CLEANUP_FAILED when the external delete fails', async () => {
-    const db = {
-      category: {
-        findUnique: vi
-          .fn()
-          .mockResolvedValue({ id: 'c1', imagePublicId: 'public/categories/c1/old' }),
-        update: vi.fn().mockResolvedValue(categoryRow()),
-        findUniqueOrThrow: vi.fn().mockResolvedValue(categoryRow()),
-      },
-    };
+    const { db } = removeDb('public/categories/c1/old');
     const mediaStorage = fakeProvider({
       deletePublicImage: vi.fn().mockRejectedValue(new Error('boom')),
     });
@@ -324,5 +351,23 @@ describe('CategoriesService.removeImage', () => {
         entityId: 'c1',
       }),
     );
+  });
+
+  it('does not surface a failing cleanup audit after a committed removal', async () => {
+    const { db } = removeDb('public/categories/c1/old');
+    const prisma = { requireClient: vi.fn().mockReturnValue(db) } as unknown as PrismaService;
+    const audit = {
+      record: vi.fn((entry: { kind: string }) =>
+        entry.kind === AuditKinds.MEDIA_CLEANUP_FAILED
+          ? Promise.reject(new Error('audit db down'))
+          : Promise.resolve(),
+      ),
+    } as unknown as AuditService;
+    const mediaStorage = fakeProvider({
+      deletePublicImage: vi.fn().mockRejectedValue(new Error('cloud down')),
+    });
+    const service = new CategoriesService(prisma, audit, mediaStorage);
+
+    await expect(service.removeImage(SUPER_ADMIN, 'c1')).resolves.toBeDefined();
   });
 });

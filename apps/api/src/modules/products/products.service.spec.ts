@@ -239,6 +239,22 @@ describe('ProductsService.uploadImage', () => {
     );
   });
 
+  it('rethrows the original upload error even when cleanup and its audit both fail', async () => {
+    const { db } = uploadDb(3);
+    const prisma = { requireClient: vi.fn().mockReturnValue(db) } as unknown as PrismaService;
+    const audit = {
+      record: vi.fn().mockRejectedValue(new Error('audit db down')),
+    } as unknown as AuditService;
+    const mediaStorage = fakeProvider({
+      deletePublicImage: vi.fn().mockRejectedValue(new Error('cloud down')),
+    });
+    const service = new ProductsService(prisma, audit, mediaStorage);
+
+    await expect(service.uploadImage(SUPER_ADMIN, 'p1', pngFile())).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
   it('rejects an invalid file before any upload happens', async () => {
     const { db } = uploadDb(0);
     const { service, mediaStorage } = buildService(db);
@@ -263,6 +279,7 @@ describe('ProductsService.uploadImage', () => {
 describe('ProductsService.setPrimaryImage', () => {
   it('clears other primaries, sets the target primary and audits it', async () => {
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'p1' }]),
       productImage: {
         findUnique: vi.fn().mockResolvedValue({ productId: 'p1', isPrimary: false }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -302,6 +319,7 @@ describe('ProductsService.setPrimaryImage', () => {
 
   it('does nothing when the target is already primary', async () => {
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'p1' }]),
       productImage: {
         findUnique: vi.fn().mockResolvedValue({ productId: 'p1', isPrimary: true }),
         updateMany: vi.fn(),
@@ -329,6 +347,47 @@ describe('ProductsService.setPrimaryImage', () => {
       NotFoundException,
     );
   });
+
+  it('locks the product row within the same transaction as the primary transition', async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'p1' }]),
+      productImage: {
+        findUnique: vi.fn().mockResolvedValue({ productId: 'p1', isPrimary: false }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        update: vi.fn().mockResolvedValue({ id: 'img2' }),
+      },
+    };
+    const db = {
+      $transaction: vi.fn((fn: (client: typeof tx) => unknown) => fn(tx)),
+      product: {
+        findUnique: vi.fn().mockResolvedValue(productRow('ACTIVE', [imageRow({ id: 'img2' })])),
+      },
+    };
+    const { service } = buildService(db);
+
+    await service.setPrimaryImage(SUPER_ADMIN, 'img2');
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(Array.from(tx.$queryRaw.mock.calls[0][0]).join('')).toContain('FOR UPDATE');
+    expect(tx.productImage.updateMany).toHaveBeenCalled();
+  });
+
+  it('throws NotFound and changes nothing when the product row disappears before the lock', async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      productImage: {
+        findUnique: vi.fn().mockResolvedValue({ productId: 'p1', isPrimary: false }),
+        updateMany: vi.fn(),
+        update: vi.fn(),
+      },
+    };
+    const db = { $transaction: vi.fn((fn: (client: typeof tx) => unknown) => fn(tx)) };
+    const { service } = buildService(db);
+
+    await expect(service.setPrimaryImage(SUPER_ADMIN, 'img2')).rejects.toThrow(NotFoundException);
+    expect(tx.productImage.updateMany).not.toHaveBeenCalled();
+    expect(tx.productImage.update).not.toHaveBeenCalled();
+  });
 });
 
 describe('ProductsService.reorderImages', () => {
@@ -338,6 +397,7 @@ describe('ProductsService.reorderImages', () => {
     primaryCount: number;
   }) {
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'p1' }]),
       productImage: {
         findMany: vi
           .fn()
@@ -409,6 +469,19 @@ describe('ProductsService.reorderImages', () => {
     });
   });
 
+  it('locks the product row before applying the new order', async () => {
+    const { db, tx } = reorderDb({
+      found: [{ productId: 'p1' }, { productId: 'p1' }],
+      existing: [{ id: 'img1' }, { id: 'img2' }],
+      primaryCount: 1,
+    });
+    const { service } = buildService(db);
+
+    await service.reorderImages(SUPER_ADMIN, { orderedImageIds: ['img2', 'img1'] });
+
+    expect(Array.from(tx.$queryRaw.mock.calls[0][0]).join('')).toContain('FOR UPDATE');
+  });
+
   it('rejects an unknown or foreign image without writing anything', async () => {
     const { db, tx } = reorderDb({
       found: [{ productId: 'p1' }, { productId: 'p2' }],
@@ -455,6 +528,7 @@ describe('ProductsService.reorderImages', () => {
 describe('ProductsService.removeImage', () => {
   it('promotes the next image and deletes the external asset', async () => {
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'p1' }]),
       productImage: {
         findUnique: vi
           .fn()
@@ -493,6 +567,7 @@ describe('ProductsService.removeImage', () => {
 
   it('audits MEDIA_CLEANUP_FAILED when the external delete fails', async () => {
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'p1' }]),
       productImage: {
         findUnique: vi
           .fn()
@@ -522,6 +597,74 @@ describe('ProductsService.removeImage', () => {
         entityId: 'img1',
       }),
     );
+  });
+
+  it('locks the product row before deleting the image', async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'p1' }]),
+      productImage: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ productId: 'p1', isPrimary: false, providerPublicId: 'public/img1' }),
+        delete: vi.fn().mockResolvedValue({ id: 'img1' }),
+      },
+    };
+    const db = {
+      $transaction: vi.fn((fn: (client: typeof tx) => unknown) => fn(tx)),
+      product: { findUnique: vi.fn().mockResolvedValue(productRow('ACTIVE', [] as unknown[])) },
+    };
+    const { service } = buildService(db);
+
+    await service.removeImage(SUPER_ADMIN, 'img1');
+
+    expect(Array.from(tx.$queryRaw.mock.calls[0][0]).join('')).toContain('FOR UPDATE');
+  });
+
+  it('throws NotFound when the product is gone even if the image row still exists', async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      productImage: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ productId: 'p1', isPrimary: false, providerPublicId: 'public/img1' }),
+        delete: vi.fn(),
+      },
+    };
+    const db = { $transaction: vi.fn((fn: (client: typeof tx) => unknown) => fn(tx)) };
+    const { service } = buildService(db);
+
+    await expect(service.removeImage(SUPER_ADMIN, 'img1')).rejects.toThrow(NotFoundException);
+    expect(tx.productImage.delete).not.toHaveBeenCalled();
+  });
+
+  it('does not surface a failing cleanup audit after a committed removal', async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'p1' }]),
+      productImage: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ productId: 'p1', isPrimary: false, providerPublicId: 'public/img1' }),
+        delete: vi.fn().mockResolvedValue({ id: 'img1' }),
+      },
+    };
+    const db = {
+      $transaction: vi.fn((fn: (client: typeof tx) => unknown) => fn(tx)),
+      product: { findUnique: vi.fn().mockResolvedValue(productRow('ACTIVE', [] as unknown[])) },
+    };
+    const prisma = { requireClient: vi.fn().mockReturnValue(db) } as unknown as PrismaService;
+    const audit = {
+      record: vi.fn((entry: { kind: string }) =>
+        entry.kind === AuditKinds.MEDIA_CLEANUP_FAILED
+          ? Promise.reject(new Error('audit db down'))
+          : Promise.resolve(),
+      ),
+    } as unknown as AuditService;
+    const mediaStorage = fakeProvider({
+      deletePublicImage: vi.fn().mockRejectedValue(new Error('cloud down')),
+    });
+    const service = new ProductsService(prisma, audit, mediaStorage);
+
+    await expect(service.removeImage(SUPER_ADMIN, 'img1')).resolves.toBeDefined();
   });
 
   it('throws NotFoundException for an unknown image without touching the provider', async () => {

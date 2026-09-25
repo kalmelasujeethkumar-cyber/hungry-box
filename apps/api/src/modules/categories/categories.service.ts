@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { CategoryDto, UserRole } from '@hungrybox/shared';
 import { Prisma, CatalogStatus } from '../../generated/prisma/client';
+import type { PrismaClient } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditKinds, AuditService } from '../audit/audit.service';
 import { MEDIA_STORAGE_PROVIDER } from '../media/media-storage-provider.interface';
@@ -190,7 +191,7 @@ export class CategoriesService {
 
     const current = await db.category.findUnique({
       where: { id: categoryId },
-      select: { id: true, imagePublicId: true },
+      select: { id: true },
     });
     if (!current) {
       throw new NotFoundException('Category not found');
@@ -202,14 +203,26 @@ export class CategoriesService {
       publicId: randomUUID(),
     });
 
+    let previousPublicId: string | null;
     try {
-      await db.category.update({
-        where: { id: categoryId },
-        data: {
-          imageUrl: stored.secureUrl,
-          imagePublicId: stored.publicId,
-          imageResourceType: stored.resourceType,
-        },
+      previousPublicId = await db.$transaction(async (tx) => {
+        await this.requireCategoryLock(tx, categoryId);
+        const row = await tx.category.findUnique({
+          where: { id: categoryId },
+          select: { imagePublicId: true },
+        });
+        if (!row) {
+          throw new NotFoundException('Category not found');
+        }
+        await tx.category.update({
+          where: { id: categoryId },
+          data: {
+            imageUrl: stored.secureUrl,
+            imagePublicId: stored.publicId,
+            imageResourceType: stored.resourceType,
+          },
+        });
+        return row.imagePublicId;
       });
     } catch (error) {
       await this.bestEffortDeleteAsset(
@@ -221,11 +234,11 @@ export class CategoriesService {
       throw error;
     }
 
-    if (current.imagePublicId) {
+    if (previousPublicId) {
       await this.bestEffortDeleteAsset(
         'category',
         categoryId,
-        current.imagePublicId,
+        previousPublicId,
         `Failed to delete replaced category image asset (${categoryId})`,
       );
     }
@@ -233,12 +246,12 @@ export class CategoriesService {
     await this.audit.record({
       actorRole: actor.role,
       actorId: actor.userId,
-      kind: current.imagePublicId
+      kind: previousPublicId
         ? AuditKinds.CATEGORY_IMAGE_REPLACED
         : AuditKinds.CATEGORY_IMAGE_UPLOADED,
       entityType: 'category',
       entityId: categoryId,
-      message: current.imagePublicId
+      message: previousPublicId
         ? `Category image replaced (${categoryId})`
         : `Category image uploaded (${categoryId})`,
     });
@@ -252,26 +265,30 @@ export class CategoriesService {
 
   async removeImage(actor: CategoryActor, categoryId: string): Promise<CategoryDto> {
     const db = this.prisma.requireClient();
-    const current = await db.category.findUnique({
-      where: { id: categoryId },
-      select: { id: true, imagePublicId: true },
-    });
-    if (!current) {
-      throw new NotFoundException('Category not found');
-    }
-    if (!current.imagePublicId) {
-      throw new BadRequestException('Category does not have an image');
-    }
 
-    await db.category.update({
-      where: { id: categoryId },
-      data: { imageUrl: null, imagePublicId: null, imageResourceType: null },
+    const removedPublicId = await db.$transaction(async (tx) => {
+      await this.requireCategoryLock(tx, categoryId);
+      const current = await tx.category.findUnique({
+        where: { id: categoryId },
+        select: { imagePublicId: true },
+      });
+      if (!current) {
+        throw new NotFoundException('Category not found');
+      }
+      if (!current.imagePublicId) {
+        throw new BadRequestException('Category does not have an image');
+      }
+      await tx.category.update({
+        where: { id: categoryId },
+        data: { imageUrl: null, imagePublicId: null, imageResourceType: null },
+      });
+      return current.imagePublicId;
     });
 
     await this.bestEffortDeleteAsset(
       'category',
       categoryId,
-      current.imagePublicId,
+      removedPublicId,
       `Failed to delete category image asset (${categoryId})`,
     );
 
@@ -291,6 +308,18 @@ export class CategoriesService {
     return toCategoryDto(category);
   }
 
+  private async requireCategoryLock(
+    db: PrismaClient | Prisma.TransactionClient,
+    categoryId: string,
+  ): Promise<void> {
+    const locked = await db.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Category" WHERE id = ${categoryId} FOR UPDATE
+    `;
+    if (locked.length === 0) {
+      throw new NotFoundException('Category not found');
+    }
+  }
+
   private async bestEffortDeleteAsset(
     entityType: string,
     entityId: string,
@@ -300,13 +329,17 @@ export class CategoriesService {
     try {
       await this.mediaStorage.deletePublicImage(publicId);
     } catch {
-      await this.audit.record({
-        actorRole: 'SYSTEM',
-        kind: AuditKinds.MEDIA_CLEANUP_FAILED,
-        entityType,
-        entityId,
-        message,
-      });
+      try {
+        await this.audit.record({
+          actorRole: 'SYSTEM',
+          kind: AuditKinds.MEDIA_CLEANUP_FAILED,
+          entityType,
+          entityId,
+          message,
+        });
+      } catch {
+        // Cleanup is best-effort by contract; a failing audit write must not surface.
+      }
     }
   }
 }
