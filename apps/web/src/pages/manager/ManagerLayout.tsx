@@ -5,24 +5,24 @@ import { branchSettingsApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import { SignOutButton } from '../../components/SignOutButton';
 import {
+  BRANCH_ASSIGNMENTS_PATH,
+  BRANCH_AUDIT_PATH,
+  BRANCH_CATALOGUE_PATH,
+  BRANCH_ORDERS_PATH,
+  BRANCH_PARTNERS_PATH,
+  BRANCH_SETTINGS_PATH,
   HOME_PATH,
-  MANAGER_ASSIGNMENTS_PATH,
-  MANAGER_AUDIT_PATH,
-  MANAGER_BASE_PATH,
-  MANAGER_CATALOG_PATH,
-  MANAGER_ORDERS_PATH,
-  MANAGER_PARTNERS_PATH,
-  MANAGER_SETTINGS_PATH,
+  MANAGEMENT_DASHBOARD_PATH,
 } from '../../routes/paths';
 
 const NAV = [
-  { to: MANAGER_BASE_PATH, label: 'Overview' },
-  { to: MANAGER_ORDERS_PATH, label: 'Orders' },
-  { to: MANAGER_PARTNERS_PATH, label: 'Partners' },
-  { to: MANAGER_ASSIGNMENTS_PATH, label: 'Assignments' },
-  { to: MANAGER_CATALOG_PATH, label: 'Catalogue' },
-  { to: MANAGER_SETTINGS_PATH, label: 'Settings' },
-  { to: MANAGER_AUDIT_PATH, label: 'Audit' },
+  { to: MANAGEMENT_DASHBOARD_PATH, label: 'Overview' },
+  { to: BRANCH_ORDERS_PATH, label: 'Orders' },
+  { to: BRANCH_PARTNERS_PATH, label: 'Partners' },
+  { to: BRANCH_ASSIGNMENTS_PATH, label: 'Assignments' },
+  { to: BRANCH_CATALOGUE_PATH, label: 'Catalogue' },
+  { to: BRANCH_SETTINGS_PATH, label: 'Settings' },
+  { to: BRANCH_AUDIT_PATH, label: 'Audit' },
 ];
 
 function ManagedBranchLabel(): JSX.Element | null {
@@ -81,7 +81,7 @@ export default function ManagerLayout({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === MANAGER_BASE_PATH}
+                end={item.to === MANAGEMENT_DASHBOARD_PATH}
                 className={({ isActive }) =>
                   [
                     'rounded-lg px-2.5 py-1.5 text-sm font-semibold',
@@ -121,7 +121,7 @@ export default function ManagerLayout({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === MANAGER_BASE_PATH}
+                end={item.to === MANAGEMENT_DASHBOARD_PATH}
                 className={({ isActive }) =>
                   [
                     'rounded-lg px-3 py-1.5 text-sm font-semibold',

@@ -334,9 +334,9 @@ describe('manager partner detail', () => {
     });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/manager/partners/dp-1']}>
+      <MemoryRouter initialEntries={['/admin/branch/partners/dp-1']}>
         <Routes>
-          <Route path="/manager/partners/:partnerId" element={<ManagerPartnerDetailPage />} />
+          <Route path="/admin/branch/partners/:partnerId" element={<ManagerPartnerDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -372,9 +372,9 @@ describe('manager partner detail', () => {
     });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/manager/partners/dp-1']}>
+      <MemoryRouter initialEntries={['/admin/branch/partners/dp-1']}>
         <Routes>
-          <Route path="/manager/partners/:partnerId" element={<ManagerPartnerDetailPage />} />
+          <Route path="/admin/branch/partners/:partnerId" element={<ManagerPartnerDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -410,9 +410,9 @@ describe('manager partner detail', () => {
     });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/manager/partners/dp-1']}>
+      <MemoryRouter initialEntries={['/admin/branch/partners/dp-1']}>
         <Routes>
-          <Route path="/manager/partners/:partnerId" element={<ManagerPartnerDetailPage />} />
+          <Route path="/admin/branch/partners/:partnerId" element={<ManagerPartnerDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -442,9 +442,9 @@ describe('manager partner detail', () => {
     });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/manager/partners/dp-1']}>
+      <MemoryRouter initialEntries={['/admin/branch/partners/dp-1']}>
         <Routes>
-          <Route path="/manager/partners/:partnerId" element={<ManagerPartnerDetailPage />} />
+          <Route path="/admin/branch/partners/:partnerId" element={<ManagerPartnerDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );

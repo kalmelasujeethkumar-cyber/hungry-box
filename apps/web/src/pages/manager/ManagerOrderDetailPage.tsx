@@ -22,7 +22,7 @@ import {
 } from '../../features/manager/manager-orders';
 import { formatPaise } from '../../lib/money';
 import ManagerLayout from './ManagerLayout';
-import { MANAGER_ORDERS_PATH } from '../../routes/paths';
+import { BRANCH_ORDERS_PATH } from '../../routes/paths';
 
 function eventLabel(kind: string): string {
   switch (kind) {
@@ -282,7 +282,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
           </section>
 
           <Link
-            to={MANAGER_ORDERS_PATH}
+            to={BRANCH_ORDERS_PATH}
             className="block rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-600 hover:border-brand-teal hover:text-brand-teal"
           >
             Back to orders

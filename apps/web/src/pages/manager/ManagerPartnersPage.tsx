@@ -22,12 +22,12 @@ import {
   PARTNER_STATUS_TONES,
 } from '../../features/delivery/delivery-status';
 import ManagerLayout from './ManagerLayout';
-import { MANAGER_PARTNERS_PATH } from '../../routes/paths';
+import { BRANCH_PARTNERS_PATH } from '../../routes/paths';
 
 function PartnerRow({ partner }: { partner: DeliveryPartnerListItemDto }): JSX.Element {
   return (
     <Link
-      to={`${MANAGER_PARTNERS_PATH}/${partner.id}`}
+      to={`${BRANCH_PARTNERS_PATH}/${partner.id}`}
       className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 hover:border-brand-teal"
     >
       <div className="min-w-0">

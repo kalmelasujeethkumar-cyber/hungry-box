@@ -22,7 +22,7 @@ import { UserIcon } from '../../features/storefront/components/icons';
 import ManagerKycCard from '../../features/delivery/ManagerKycCard';
 import { formatDateOnly } from '../../lib/format';
 import ManagerLayout from './ManagerLayout';
-import { MANAGER_PARTNERS_PATH } from '../../routes/paths';
+import { BRANCH_PARTNERS_PATH } from '../../routes/paths';
 
 function Field({ label, value }: { label: string; value: string | null }): JSX.Element {
   return (
@@ -150,7 +150,7 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
           </p>
         </div>
         <Link
-          to={MANAGER_PARTNERS_PATH}
+          to={BRANCH_PARTNERS_PATH}
           className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-brand-teal"
         >
           ← All partners

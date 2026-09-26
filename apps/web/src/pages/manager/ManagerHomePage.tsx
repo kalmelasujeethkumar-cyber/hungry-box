@@ -8,42 +8,42 @@ import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
 import ManagerLayout from './ManagerLayout';
 import {
-  MANAGER_ASSIGNMENTS_PATH,
-  MANAGER_AUDIT_PATH,
-  MANAGER_CATALOG_PATH,
-  MANAGER_ORDERS_PATH,
-  MANAGER_PARTNERS_PATH,
-  MANAGER_SETTINGS_PATH,
+  BRANCH_ASSIGNMENTS_PATH,
+  BRANCH_AUDIT_PATH,
+  BRANCH_CATALOGUE_PATH,
+  BRANCH_ORDERS_PATH,
+  BRANCH_PARTNERS_PATH,
+  BRANCH_SETTINGS_PATH,
 } from '../../routes/paths';
 
 const QUICK_LINKS = [
   {
-    to: MANAGER_ORDERS_PATH,
+    to: BRANCH_ORDERS_PATH,
     title: 'Orders',
     description: 'Confirm, prepare and dispatch orders, or cancel unfulfilled ones.',
   },
   {
-    to: MANAGER_CATALOG_PATH,
+    to: BRANCH_CATALOGUE_PATH,
     title: 'Catalogue',
     description: 'Manage branch prices, discounts and product availability.',
   },
   {
-    to: MANAGER_PARTNERS_PATH,
+    to: BRANCH_PARTNERS_PATH,
     title: 'Delivery partners',
     description: 'Onboard, verify documents and manage partner availability.',
   },
   {
-    to: MANAGER_ASSIGNMENTS_PATH,
+    to: BRANCH_ASSIGNMENTS_PATH,
     title: 'Assignments',
     description: 'Assign ready orders to online partners and track delivery progress.',
   },
   {
-    to: MANAGER_SETTINGS_PATH,
+    to: BRANCH_SETTINGS_PATH,
     title: 'Settings',
     description: 'Update the delivery radius and branch address.',
   },
   {
-    to: MANAGER_AUDIT_PATH,
+    to: BRANCH_AUDIT_PATH,
     title: 'Audit log',
     description: 'Review branch activity and export a CSV trail.',
   },
@@ -117,25 +117,25 @@ export default function ManagerHomePage(): JSX.Element {
           <StatCard
             label="New orders"
             count={newOrders}
-            to={`${MANAGER_ORDERS_PATH}?status=PLACED`}
+            to={`${BRANCH_ORDERS_PATH}?status=PLACED`}
             accent="text-brand-orange"
           />
           <StatCard
             label="Preparing"
             count={preparing}
-            to={`${MANAGER_ORDERS_PATH}?status=PREPARING`}
+            to={`${BRANCH_ORDERS_PATH}?status=PREPARING`}
             accent="text-brand-navy"
           />
           <StatCard
             label="Ready for pickup"
             count={ready}
-            to={`${MANAGER_ORDERS_PATH}?status=READY_FOR_PICKUP`}
+            to={`${BRANCH_ORDERS_PATH}?status=READY_FOR_PICKUP`}
             accent="text-brand-teal"
           />
           <StatCard
             label="Out for delivery"
             count={live}
-            to={`${MANAGER_ORDERS_PATH}?status=OUT_FOR_DELIVERY`}
+            to={`${BRANCH_ORDERS_PATH}?status=OUT_FOR_DELIVERY`}
             accent="text-yellow-600"
           />
         </div>

@@ -219,7 +219,7 @@ describe('manager orders', () => {
 
   it('filters orders by status from the query string', async () => {
     render(
-      <MemoryRouter initialEntries={['/manager/orders?status=PREPARING']}>
+      <MemoryRouter initialEntries={['/admin/branch/orders?status=PREPARING']}>
         <ManagerOrdersPage />
       </MemoryRouter>,
     );
@@ -234,9 +234,9 @@ describe('manager orders', () => {
     MOCK_APIS.branchOrdersApi.advanceStatus.mockResolvedValue(orderDetail({ status: 'CONFIRMED' }));
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/manager/orders/ord-1']}>
+      <MemoryRouter initialEntries={['/admin/branch/orders/ord-1']}>
         <Routes>
-          <Route path="/manager/orders/:orderId" element={<ManagerOrderDetailPage />} />
+          <Route path="/admin/branch/orders/:orderId" element={<ManagerOrderDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -257,9 +257,9 @@ describe('manager orders', () => {
     MOCK_APIS.branchOrdersApi.cancel.mockResolvedValue(orderDetail({ status: 'CANCELLED' }));
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/manager/orders/ord-1']}>
+      <MemoryRouter initialEntries={['/admin/branch/orders/ord-1']}>
         <Routes>
-          <Route path="/manager/orders/:orderId" element={<ManagerOrderDetailPage />} />
+          <Route path="/admin/branch/orders/:orderId" element={<ManagerOrderDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -327,9 +327,9 @@ describe('manager orders', () => {
     });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/manager/orders/ord-1']}>
+      <MemoryRouter initialEntries={['/admin/branch/orders/ord-1']}>
         <Routes>
-          <Route path="/manager/orders/:orderId" element={<ManagerOrderDetailPage />} />
+          <Route path="/admin/branch/orders/:orderId" element={<ManagerOrderDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );

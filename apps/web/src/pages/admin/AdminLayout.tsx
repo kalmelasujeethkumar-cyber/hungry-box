@@ -4,7 +4,6 @@ import { useAuth } from '../../auth/auth-context';
 import { SignOutButton } from '../../components/SignOutButton';
 import {
   ADMIN_AUDIT_PATH,
-  ADMIN_BASE_PATH,
   ADMIN_BRANCHES_PATH,
   ADMIN_CATALOGUE_PATH,
   ADMIN_MANAGERS_PATH,
@@ -12,10 +11,11 @@ import {
   ADMIN_PARTNERS_PATH,
   ADMIN_REPORTS_PATH,
   HOME_PATH,
+  MANAGEMENT_DASHBOARD_PATH,
 } from '../../routes/paths';
 
 const NAV = [
-  { to: ADMIN_BASE_PATH, label: 'Overview' },
+  { to: MANAGEMENT_DASHBOARD_PATH, label: 'Overview' },
   { to: ADMIN_BRANCHES_PATH, label: 'Branches' },
   { to: ADMIN_ORDERS_PATH, label: 'Orders' },
   { to: ADMIN_CATALOGUE_PATH, label: 'Catalogue' },
@@ -51,7 +51,7 @@ export default function AdminLayout({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === ADMIN_BASE_PATH}
+                end={item.to === MANAGEMENT_DASHBOARD_PATH}
                 className={({ isActive }) =>
                   [
                     'rounded-lg px-2.5 py-1.5 text-sm font-semibold',
@@ -90,7 +90,7 @@ export default function AdminLayout({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === ADMIN_BASE_PATH}
+                end={item.to === MANAGEMENT_DASHBOARD_PATH}
                 className={({ isActive }) =>
                   [
                     'rounded-lg px-3 py-1.5 text-sm font-semibold',
