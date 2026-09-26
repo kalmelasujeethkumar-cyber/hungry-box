@@ -1,6 +1,6 @@
 import type { JSX, ReactNode } from 'react';
-import { Dialog } from '../../../components/Dialog';
-import { Button } from '../../../components/Button';
+import { Dialog } from './Dialog';
+import { Button } from './Button';
 
 export default function ConfirmDialog({
   open,

@@ -10,7 +10,7 @@ import type {
 import { addressApi, ApiError, checkoutApi, ordersApi, paymentsApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import EmptyState from '../../components/EmptyState';
-import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { CartIcon, LocationIcon } from '../../features/storefront/components/icons';
 import { useCart } from '../../features/storefront/cart-context';
 import { useStorefront } from '../../features/storefront/storefront-context';

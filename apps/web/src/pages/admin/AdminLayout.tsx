@@ -2,17 +2,27 @@ import type { JSX, ReactNode } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth/auth-context';
 import { SignOutButton } from '../../components/SignOutButton';
-import { HOME_PATH } from '../../routes/paths';
+import {
+  ADMIN_AUDIT_PATH,
+  ADMIN_BASE_PATH,
+  ADMIN_BRANCHES_PATH,
+  ADMIN_CATALOGUE_PATH,
+  ADMIN_MANAGERS_PATH,
+  ADMIN_ORDERS_PATH,
+  ADMIN_PARTNERS_PATH,
+  ADMIN_REPORTS_PATH,
+  HOME_PATH,
+} from '../../routes/paths';
 
 const NAV = [
-  { to: '/admin', label: 'Overview' },
-  { to: '/admin/branches', label: 'Branches' },
-  { to: '/admin/orders', label: 'Orders' },
-  { to: '/admin/catalogue', label: 'Catalogue' },
-  { to: '/admin/managers', label: 'Managers' },
-  { to: '/admin/partners', label: 'Partners' },
-  { to: '/admin/audit', label: 'Audit' },
-  { to: '/admin/reports', label: 'Reports' },
+  { to: ADMIN_BASE_PATH, label: 'Overview' },
+  { to: ADMIN_BRANCHES_PATH, label: 'Branches' },
+  { to: ADMIN_ORDERS_PATH, label: 'Orders' },
+  { to: ADMIN_CATALOGUE_PATH, label: 'Catalogue' },
+  { to: ADMIN_MANAGERS_PATH, label: 'Managers' },
+  { to: ADMIN_PARTNERS_PATH, label: 'Partners' },
+  { to: ADMIN_AUDIT_PATH, label: 'Audit' },
+  { to: ADMIN_REPORTS_PATH, label: 'Reports' },
 ];
 
 export default function AdminLayout({
@@ -41,7 +51,7 @@ export default function AdminLayout({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === '/admin'}
+                end={item.to === ADMIN_BASE_PATH}
                 className={({ isActive }) =>
                   [
                     'rounded-lg px-2.5 py-1.5 text-sm font-semibold',
@@ -80,7 +90,7 @@ export default function AdminLayout({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === '/admin'}
+                end={item.to === ADMIN_BASE_PATH}
                 className={({ isActive }) =>
                   [
                     'rounded-lg px-3 py-1.5 text-sm font-semibold',

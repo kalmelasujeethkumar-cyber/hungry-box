@@ -4,16 +4,25 @@ import { Link, NavLink } from 'react-router-dom';
 import { branchSettingsApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import { SignOutButton } from '../../components/SignOutButton';
-import { HOME_PATH } from '../../routes/paths';
+import {
+  HOME_PATH,
+  MANAGER_ASSIGNMENTS_PATH,
+  MANAGER_AUDIT_PATH,
+  MANAGER_BASE_PATH,
+  MANAGER_CATALOG_PATH,
+  MANAGER_ORDERS_PATH,
+  MANAGER_PARTNERS_PATH,
+  MANAGER_SETTINGS_PATH,
+} from '../../routes/paths';
 
 const NAV = [
-  { to: '/manager', label: 'Overview' },
-  { to: '/manager/orders', label: 'Orders' },
-  { to: '/manager/partners', label: 'Partners' },
-  { to: '/manager/assignments', label: 'Assignments' },
-  { to: '/manager/catalog', label: 'Catalogue' },
-  { to: '/manager/settings', label: 'Settings' },
-  { to: '/manager/audit', label: 'Audit' },
+  { to: MANAGER_BASE_PATH, label: 'Overview' },
+  { to: MANAGER_ORDERS_PATH, label: 'Orders' },
+  { to: MANAGER_PARTNERS_PATH, label: 'Partners' },
+  { to: MANAGER_ASSIGNMENTS_PATH, label: 'Assignments' },
+  { to: MANAGER_CATALOG_PATH, label: 'Catalogue' },
+  { to: MANAGER_SETTINGS_PATH, label: 'Settings' },
+  { to: MANAGER_AUDIT_PATH, label: 'Audit' },
 ];
 
 function ManagedBranchLabel(): JSX.Element | null {
@@ -72,7 +81,7 @@ export default function ManagerLayout({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === '/manager'}
+                end={item.to === MANAGER_BASE_PATH}
                 className={({ isActive }) =>
                   [
                     'rounded-lg px-2.5 py-1.5 text-sm font-semibold',
@@ -112,7 +121,7 @@ export default function ManagerLayout({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === '/manager'}
+                end={item.to === MANAGER_BASE_PATH}
                 className={({ isActive }) =>
                   [
                     'rounded-lg px-3 py-1.5 text-sm font-semibold',

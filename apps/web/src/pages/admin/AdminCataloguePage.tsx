@@ -16,7 +16,7 @@ import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
 import { catalogStatusLabel, catalogStatusTone } from '../../components/status';
-import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
 import { PackageIcon, PlusIcon, TrashIcon } from '../../features/storefront/components/icons';
 import AdminLayout from './AdminLayout';

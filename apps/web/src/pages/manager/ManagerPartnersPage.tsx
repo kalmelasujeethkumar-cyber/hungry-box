@@ -8,7 +8,7 @@ import type {
 } from '@hungrybox/shared';
 import { ApiError, branchDeliveryApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
 import { Button } from '../../components/Button';
 import { LoadingState } from '../../components/LoadingState';
@@ -22,11 +22,12 @@ import {
   PARTNER_STATUS_TONES,
 } from '../../features/delivery/delivery-status';
 import ManagerLayout from './ManagerLayout';
+import { MANAGER_PARTNERS_PATH } from '../../routes/paths';
 
 function PartnerRow({ partner }: { partner: DeliveryPartnerListItemDto }): JSX.Element {
   return (
     <Link
-      to={`/manager/partners/${partner.id}`}
+      to={`${MANAGER_PARTNERS_PATH}/${partner.id}`}
       className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 hover:border-brand-teal"
     >
       <div className="min-w-0">

@@ -2,7 +2,7 @@ import type { JSX } from 'react';
 import { useState } from 'react';
 import type { DeliveryAssignmentDto } from '@hungrybox/shared';
 import { ApiError, deliveryPartnerApi } from '../../api/client';
-import ConfirmDialog from '../storefront/components/ConfirmDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { Notice } from '../../components/Notice';
 import { CheckboxField } from '../../components/forms/CheckboxField';
 import { TextareaField } from '../../components/forms/TextareaField';

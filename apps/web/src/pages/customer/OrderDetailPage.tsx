@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import type { OrderDetailDto } from '@hungrybox/shared';
 import { ApiError, ordersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
 import { StatusBadge } from '../../components/StatusBadge';
 import { PackageIcon } from '../../features/storefront/components/icons';

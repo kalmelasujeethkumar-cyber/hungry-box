@@ -5,7 +5,7 @@ import type { AddressDto } from '@hungrybox/shared';
 import { Dialog } from '../../../components/Dialog';
 import { useCart } from '../cart-context';
 import { useStorefront } from '../storefront-context';
-import ConfirmDialog from './ConfirmDialog';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import { LocationIcon } from './icons';
 
 export default function LocationModal(): JSX.Element | null {

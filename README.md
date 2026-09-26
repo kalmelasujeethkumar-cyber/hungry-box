@@ -46,18 +46,18 @@ schema change), promotions, payouts, and customer/delivery app-wide UI consisten
 
 ```
 hungry box/
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ apps/
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ api/             NestJS REST API                    (@hungrybox/api)
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ src/generated/prisma/   generated Prisma client (git-ignored)
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ web/             React + Vite + Tailwind frontend   (@hungrybox/web)
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ packages/
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ shared/          Shared TS contracts                (@hungrybox/shared)
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡       ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ src/         source
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡       ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ dist/        built declarations (git-ignored, rebuilt locally)
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ docs/                Architecture & decision records
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ AGENTS.md            Permanent engineering rules (read first)
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ compose.yaml         Local PostgreSQL for development
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ package.json         npm workspaces + root scripts
+|-- apps/
+|   |-- api/             NestJS REST API                    (@hungrybox/api)
+|   |   `-- src/generated/prisma/   generated Prisma client (git-ignored)
+|   `-- web/             React + Vite + Tailwind frontend   (@hungrybox/web)
+|-- packages/
+|   `-- shared/          Shared TS contracts                (@hungrybox/shared)
+|       |-- src/         source
+|       `-- dist/        built declarations (git-ignored, rebuilt locally)
+|-- docs/                Architecture & decision records
+|-- AGENTS.md            Permanent engineering rules (read first)
+|-- compose.yaml         Local PostgreSQL for development
+`-- package.json         npm workspaces + root scripts
 ```
 
 The shared package is **built to `packages/shared/dist`** (declaration files) and both apps
@@ -92,7 +92,7 @@ npm run db:seed              # deterministic demo/development seed data
 The seed creates the demo **Guntur** branch (10 km delivery radius) and the demo accounts
 (hashed with Argon2): `admin@gmail.com` / `456456` (SUPER_ADMIN),
 `branch1@gmail.com` / `654654` (BRANCH_MANAGER), `shiva@` / `789789`
-(DELIVERY_PARTNER ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â a username, intentionally not an email), and
+(DELIVERY_PARTNER — a username, intentionally not an email), and
 `customer@gmail.com` / `20252025` (CUSTOMER, with a default HOME address in Guntur for
 demo ordering). Seeds are idempotent and clearly marked demo/development data; they never
 run automatically on server start.
@@ -101,9 +101,9 @@ run automatically on server start.
 
 Copy the example files and fill in local values (never commit real secrets):
 
-- `apps/api/.env.example` ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ `apps/api/.env` (`PORT`, `API_PREFIX`, `CORS_ORIGINS`,
+- `apps/api/.env.example` → `apps/api/.env` (`PORT`, `API_PREFIX`, `CORS_ORIGINS`,
   `DATABASE_URL`)
-- `apps/web/.env.example` ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ `apps/web/.env` (only public `VITE_*` values belong here;
+- `apps/web/.env.example` → `apps/web/.env` (only public `VITE_*` values belong here;
   none are required yet)
 
 `DATABASE_URL` must come from environment variables. `.env*` files are git-ignored; only
@@ -116,7 +116,7 @@ Run from the repository root:
 ```bash
 npm run dev:web              # frontend dev server (http://localhost:5173)
 npm run dev:api              # API dev server (watch, http://localhost:3000/api)
-npm run build                # build shared ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ api ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ web
+npm run build                # build shared → api → web
 npm run typecheck            # typecheck shared/api/web
 npm run lint                 # lint api + web
 npm run format               # prettier --write
@@ -155,15 +155,15 @@ Added in Phase 3 (all Bearer JWT; `CUSTOMER` unless noted):
 | Endpoint                                                                                         | Access                 |
 | ------------------------------------------------------------------------------------------------ | ---------------------- |
 | `GET /api/catalog/products?branchId=[&categorySlug][&q]`                                         | Any authenticated user |
-| `GET /api/catalog/categories?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`                                           | Any authenticated user |
-| `GET /api/catalog/products/:productId?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`                                  | Any authenticated user |
+| `GET /api/catalog/categories?branchId=…`                                                         | Any authenticated user |
+| `GET /api/catalog/products/:productId?branchId=…`                                                | Any authenticated user |
 | `POST /api/locations/serviceability`                                                             | Any authenticated user |
 | `GET/POST /api/addresses`, `/api/addresses/:id` (GET/PATCH/DELETE), `/api/addresses/:id/default` | `CUSTOMER`             |
-| `GET /api/cart?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`, `DELETE /api/cart?branchId=ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦`            | `CUSTOMER`             |
+| `GET /api/cart?branchId=…`, `DELETE /api/cart?branchId=…`                                        | `CUSTOMER`             |
 | `POST /api/cart/items`, `PATCH/DELETE /api/cart/items/:id`                                       | `CUSTOMER`             |
 
 Serviceability is computed on the server (Haversine vs. `branch.deliveryRadiusKm`) and the
-cart always re-derives unit prices from the branch product on each mutation ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the client
+cart always re-derives unit prices from the branch product on each mutation — the client
 never sends prices. Branch-scoped endpoints reject requests whose `branchId` target does
 not match the calling manager/partner's assigned branch (enforced on the server, never the
 client). Live database tests are opt-in: set `RUN_LIVE_E2E=1` and a real `DATABASE_URL`
@@ -236,10 +236,10 @@ entities; refund/analytics reporting derives from `Payment.status` (read-only; r
   NestJS backend + health check, Prisma wiring, React/Vite/Tailwind frontend.
 - **Phase 2:** Authentication & RBAC, branches, global products + branch products,
   customer catalog API, secure demo seed, role-based frontend routing.
-- **Phase 3:** Customer experience in the one app ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â saved addresses, delivery
+- **Phase 3:** Customer experience in the one app — saved addresses, delivery
   serviceability, branch-aware storefront (search/filter/product details), and a
   per-branch cart with server-side pricing.
-- **Phase 4 (complete):** Checkout, payments & orders ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â server-verified preview/intent +
+- **Phase 4 (complete):** Checkout, payments & orders — server-verified preview/intent +
   payment-provider abstraction (`dev` simulator), transactional idempotent order creation
   with immutable snapshots, order state machine + customer timeline/history/cancel,
   branch-scoped manager order operations, audit log.

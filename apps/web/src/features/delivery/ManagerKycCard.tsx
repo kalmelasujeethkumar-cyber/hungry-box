@@ -16,7 +16,7 @@ import {
   KYC_OVERALL_LABELS,
   KYC_OVERALL_TONES,
 } from './delivery-status';
-import ConfirmDialog from '../storefront/components/ConfirmDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 export default function ManagerKycCard({
   partnerId,

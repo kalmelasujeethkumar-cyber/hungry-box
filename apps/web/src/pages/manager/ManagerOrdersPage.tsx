@@ -15,6 +15,7 @@ import { ORDER_STATUS_FILTERS } from '../../features/manager/manager-orders';
 import { formatPlacedAt } from '../../lib/format';
 import { formatPaise } from '../../lib/money';
 import ManagerLayout from './ManagerLayout';
+import { MANAGER_ORDERS_PATH } from '../../routes/paths';
 
 export default function ManagerOrdersPage(): JSX.Element {
   const { token } = useAuth();
@@ -81,7 +82,7 @@ export default function ManagerOrdersPage(): JSX.Element {
           {orders.map((order) => (
             <li key={order.id}>
               <Link
-                to={`/manager/orders/${order.id}`}
+                to={`${MANAGER_ORDERS_PATH}/${order.id}`}
                 className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 hover:border-brand-teal"
               >
                 <div className="min-w-0">

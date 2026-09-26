@@ -33,7 +33,25 @@ import ManagerAuditPage from '../pages/manager/ManagerAuditPage';
 import ManagerAssignmentsPage from '../pages/manager/ManagerAssignmentsPage';
 import ManagerPartnerDetailPage from '../pages/manager/ManagerPartnerDetailPage';
 import ManagerPartnersPage from '../pages/manager/ManagerPartnersPage';
-import { HOME_PATH, LOGIN_PATH } from './paths';
+import {
+  ADMIN_AUDIT_PATH,
+  ADMIN_BASE_PATH,
+  ADMIN_BRANCHES_PATH,
+  ADMIN_CATALOGUE_PATH,
+  ADMIN_MANAGERS_PATH,
+  ADMIN_ORDERS_PATH,
+  ADMIN_PARTNERS_PATH,
+  ADMIN_REPORTS_PATH,
+  HOME_PATH,
+  LOGIN_PATH,
+  MANAGER_ASSIGNMENTS_PATH,
+  MANAGER_AUDIT_PATH,
+  MANAGER_BASE_PATH,
+  MANAGER_CATALOG_PATH,
+  MANAGER_ORDERS_PATH,
+  MANAGER_PARTNERS_PATH,
+  MANAGER_SETTINGS_PATH,
+} from './paths';
 
 export const appRouter = createBrowserRouter([
   { path: HOME_PATH, element: <HomePage /> },
@@ -46,7 +64,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/admin',
+    path: ADMIN_BASE_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['SUPER_ADMIN']}>
@@ -56,7 +74,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/admin/branches',
+    path: ADMIN_BRANCHES_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['SUPER_ADMIN']}>
@@ -66,7 +84,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/admin/orders',
+    path: ADMIN_ORDERS_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['SUPER_ADMIN']}>
@@ -76,7 +94,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/admin/catalogue',
+    path: ADMIN_CATALOGUE_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['SUPER_ADMIN']}>
@@ -86,7 +104,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/admin/managers',
+    path: ADMIN_MANAGERS_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['SUPER_ADMIN']}>
@@ -96,7 +114,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/admin/partners',
+    path: ADMIN_PARTNERS_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['SUPER_ADMIN']}>
@@ -106,7 +124,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/admin/audit',
+    path: ADMIN_AUDIT_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['SUPER_ADMIN']}>
@@ -116,7 +134,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/admin/reports',
+    path: ADMIN_REPORTS_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['SUPER_ADMIN']}>
@@ -126,7 +144,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/manager',
+    path: MANAGER_BASE_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['BRANCH_MANAGER']}>
@@ -136,7 +154,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/manager/partners',
+    path: MANAGER_PARTNERS_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['BRANCH_MANAGER']}>
@@ -156,7 +174,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/manager/assignments',
+    path: MANAGER_ASSIGNMENTS_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['BRANCH_MANAGER']}>
@@ -166,7 +184,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/manager/orders',
+    path: MANAGER_ORDERS_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['BRANCH_MANAGER']}>
@@ -186,7 +204,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/manager/catalog',
+    path: MANAGER_CATALOG_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['BRANCH_MANAGER']}>
@@ -196,7 +214,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/manager/settings',
+    path: MANAGER_SETTINGS_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['BRANCH_MANAGER']}>
@@ -206,7 +224,7 @@ export const appRouter = createBrowserRouter([
     ),
   },
   {
-    path: '/manager/audit',
+    path: MANAGER_AUDIT_PATH,
     element: (
       <RequireAuth>
         <RequireRole roles={['BRANCH_MANAGER']}>

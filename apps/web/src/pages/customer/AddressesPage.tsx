@@ -10,7 +10,7 @@ import { addressApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import { Dialog } from '../../components/Dialog';
 import EmptyState from '../../components/EmptyState';
-import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { AddressIcon } from '../../features/storefront/components/icons';
 import { useStorefront } from '../../features/storefront/storefront-context';
 

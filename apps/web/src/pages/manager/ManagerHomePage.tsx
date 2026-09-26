@@ -7,35 +7,43 @@ import { useAuth } from '../../auth/auth-context';
 import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
 import ManagerLayout from './ManagerLayout';
+import {
+  MANAGER_ASSIGNMENTS_PATH,
+  MANAGER_AUDIT_PATH,
+  MANAGER_CATALOG_PATH,
+  MANAGER_ORDERS_PATH,
+  MANAGER_PARTNERS_PATH,
+  MANAGER_SETTINGS_PATH,
+} from '../../routes/paths';
 
 const QUICK_LINKS = [
   {
-    to: '/manager/orders',
+    to: MANAGER_ORDERS_PATH,
     title: 'Orders',
     description: 'Confirm, prepare and dispatch orders, or cancel unfulfilled ones.',
   },
   {
-    to: '/manager/catalog',
+    to: MANAGER_CATALOG_PATH,
     title: 'Catalogue',
     description: 'Manage branch prices, discounts and product availability.',
   },
   {
-    to: '/manager/partners',
+    to: MANAGER_PARTNERS_PATH,
     title: 'Delivery partners',
     description: 'Onboard, verify documents and manage partner availability.',
   },
   {
-    to: '/manager/assignments',
+    to: MANAGER_ASSIGNMENTS_PATH,
     title: 'Assignments',
     description: 'Assign ready orders to online partners and track delivery progress.',
   },
   {
-    to: '/manager/settings',
+    to: MANAGER_SETTINGS_PATH,
     title: 'Settings',
     description: 'Update the delivery radius and branch address.',
   },
   {
-    to: '/manager/audit',
+    to: MANAGER_AUDIT_PATH,
     title: 'Audit log',
     description: 'Review branch activity and export a CSV trail.',
   },
@@ -109,25 +117,25 @@ export default function ManagerHomePage(): JSX.Element {
           <StatCard
             label="New orders"
             count={newOrders}
-            to="/manager/orders?status=PLACED"
+            to={`${MANAGER_ORDERS_PATH}?status=PLACED`}
             accent="text-brand-orange"
           />
           <StatCard
             label="Preparing"
             count={preparing}
-            to="/manager/orders?status=PREPARING"
+            to={`${MANAGER_ORDERS_PATH}?status=PREPARING`}
             accent="text-brand-navy"
           />
           <StatCard
             label="Ready for pickup"
             count={ready}
-            to="/manager/orders?status=READY_FOR_PICKUP"
+            to={`${MANAGER_ORDERS_PATH}?status=READY_FOR_PICKUP`}
             accent="text-brand-teal"
           />
           <StatCard
             label="Out for delivery"
             count={live}
-            to="/manager/orders?status=OUT_FOR_DELIVERY"
+            to={`${MANAGER_ORDERS_PATH}?status=OUT_FOR_DELIVERY`}
             accent="text-yellow-600"
           />
         </div>

@@ -8,7 +8,7 @@ import { Button } from '../../components/Button';
 import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
-import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { formatPaise } from '../../lib/money';

@@ -28,6 +28,7 @@ import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '../../features/order
 import { formatPaise } from '../../lib/money';
 import { toISODate } from '../../lib/format';
 import AdminLayout from './AdminLayout';
+import { ADMIN_BRANCHES_PATH, ADMIN_ORDERS_PATH } from '../../routes/paths';
 
 const BUCKET_OPTIONS: { value: DashboardBucket; label: string }[] = [
   { value: 'day', label: 'Day' },
@@ -197,7 +198,7 @@ export default function AdminOverviewPage(): JSX.Element {
             <MetricCard
               label="Orders"
               value={String(dashboard.orders)}
-              to="/admin/orders"
+              to={ADMIN_ORDERS_PATH}
               accent="text-brand-orange"
             />
             <MetricCard
@@ -241,19 +242,19 @@ export default function AdminOverviewPage(): JSX.Element {
             <MetricCard
               label="Active branches"
               value={String(dashboard.activeBranches)}
-              to="/admin/branches"
+              to={ADMIN_BRANCHES_PATH}
               accent="text-emerald-600"
             />
             <MetricCard
               label="Paused branches"
               value={String(dashboard.pausedBranches)}
-              to="/admin/branches"
+              to={ADMIN_BRANCHES_PATH}
               accent="text-amber-600"
             />
             <MetricCard
               label="Inactive branches"
               value={String(dashboard.inactiveBranches)}
-              to="/admin/branches"
+              to={ADMIN_BRANCHES_PATH}
               accent="text-slate-600"
             />
           </div>

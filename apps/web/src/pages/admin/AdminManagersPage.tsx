@@ -11,7 +11,7 @@ import type {
 } from '@hungrybox/shared';
 import { ApiError, branchesApi, usersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
