@@ -1,0 +1,61 @@
+# Hungry Box - line-ending policy
+#
+# Why this exists:
+#   This repository is developed on Windows inside OneDrive with
+#   core.autocrlf=true and no repository policy. Git applied a
+#   machine-specific CRLF conversion on checkout, which produced
+#   phantom "modified" entries in git status even though the stored
+#   content was byte-identical.
+#
+# The policy:
+#   text=auto  Git detects text vs binary. Text is stored with LF.
+#   eol=lf     The working tree also uses LF, on every OS.
+#
+# LF is the correct choice here: this is a Node/TypeScript repository
+# and npm, ESLint, Prettier (endOfLine defaults to lf), Vite, NestJS
+# and Prisma all expect LF. No file tracked in this repository needs
+# CRLF. This file overrides core.autocrlf, so line endings are now
+# deterministic regardless of each developer's Git settings.
+
+# Default for every path: auto-detect, store LF, check out LF.
+* text=auto eol=lf
+
+# Text formats tracked in this repository, declared explicitly so they
+# never depend on Git's binary auto-detection heuristic.
+*.ts            text eol=lf
+*.tsx           text eol=lf
+*.mts           text eol=lf
+*.mjs           text eol=lf
+*.json          text eol=lf
+*.yaml          text eol=lf
+*.toml          text eol=lf
+*.css           text eol=lf
+*.html          text eol=lf
+*.svg           text eol=lf
+*.md            text eol=lf
+*.prisma        text eol=lf
+*.sql           text eol=lf
+*.example       text eol=lf
+.gitattributes  text eol=lf
+.gitignore      text eol=lf
+.prettierrc     text eol=lf
+.prettierignore text eol=lf
+.nvmrc          text eol=lf
+
+# Binary: stored byte-for-byte, never line-ending normalized.
+# "binary" is shorthand for -text -diff. No binary file is tracked
+# today; these cover the formats this project will receive - product
+# and category imagery for the catalogue, and partner KYC uploads.
+# favicon.svg is intentionally absent: SVG is XML text and is handled
+# above.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.webp          binary
+*.avif          binary
+*.gif           binary
+*.ico           binary
+*.woff2         binary
+*.woff          binary
+*.pdf           binary
+*.zip           binary
