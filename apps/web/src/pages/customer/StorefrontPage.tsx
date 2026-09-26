@@ -6,6 +6,7 @@ import { useAuth } from '../../auth/auth-context';
 import { useCart } from '../../features/storefront/cart-context';
 import CategoryChips from '../../features/storefront/components/CategoryChips';
 import EmptyState from '../../components/EmptyState';
+import { Notice } from '../../components/Notice';
 import LocationBanner from '../../features/storefront/components/LocationBanner';
 import ProductDetailModal from '../../features/storefront/components/ProductDetailModal';
 import ProductGrid from '../../features/storefront/components/ProductGrid';
@@ -16,8 +17,18 @@ import { useStorefront } from '../../features/storefront/storefront-context';
 
 export default function StorefrontPage(): JSX.Element {
   const { token } = useAuth();
-  const { products, loadingCatalog, catalogError, status, branchId, setLocationsOpen } =
-    useStorefront();
+  const {
+    products,
+    loadingCatalog,
+    catalogError,
+    status,
+    branchId,
+    setLocationsOpen,
+    search,
+    categorySlug,
+    setSearch,
+    setCategory,
+  } = useStorefront();
   const { cart, addItem, updateQuantity, removeItem } = useCart();
   const [detail, setDetail] = useState<CatalogProductDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -60,21 +71,47 @@ export default function StorefrontPage(): JSX.Element {
         <>
           <SearchBar />
           <CategoryChips />
-          {catalogError ? (
-            <div
-              className="rounded-2xl border border-brand-orange/40 bg-brand-orange/10 p-4 text-sm font-semibold text-slate-700"
-              role="alert"
-            >
-              {catalogError}
-            </div>
-          ) : loadingCatalog ? (
+          {catalogError ? <Notice tone="error">{catalogError}</Notice> : null}
+          {loadingCatalog ? (
             <ProductSkeleton aria-label="Loading menu" />
           ) : products.length === 0 ? (
-            <EmptyState
-              icon={<PackageIcon className="h-8 w-8" />}
-              title="No items yet"
-              message="We could not find anything matching your search. Try a different keyword or category."
-            />
+            search.trim() !== '' ? (
+              <EmptyState
+                icon={<PackageIcon className="h-8 w-8" />}
+                title="No results found"
+                message={`We could not find anything matching “${search.trim()}”. Try a different keyword or clear the search.`}
+                action={
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="rounded-lg bg-brand-orange px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-orange/90"
+                  >
+                    Clear search
+                  </button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={<PackageIcon className="h-8 w-8" />}
+                title={categorySlug ? 'Nothing here yet' : 'No items yet'}
+                message={
+                  categorySlug
+                    ? 'This category is still growing. Browse the full menu for now.'
+                    : 'This location has no items on the menu yet. Check back soon.'
+                }
+                action={
+                  categorySlug ? (
+                    <button
+                      type="button"
+                      onClick={() => setCategory(null)}
+                      className="rounded-lg bg-brand-orange px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-orange/90"
+                    >
+                      Browse full menu
+                    </button>
+                  ) : undefined
+                }
+              />
+            )
           ) : (
             <ProductGrid
               products={products}
@@ -103,14 +140,7 @@ export default function StorefrontPage(): JSX.Element {
         />
       ) : null}
 
-      {detailError ? (
-        <div
-          className="rounded-2xl border border-brand-orange/40 bg-brand-orange/10 p-4 text-sm font-semibold text-slate-700"
-          role="alert"
-        >
-          {detailError}
-        </div>
-      ) : null}
+      {detailError ? <Notice tone="error">{detailError}</Notice> : null}
 
       {status === 'idle' || status === 'error' ? (
         <EmptyState

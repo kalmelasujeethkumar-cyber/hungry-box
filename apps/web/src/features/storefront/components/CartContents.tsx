@@ -117,7 +117,8 @@ export default function CartContents({
           Proceed to checkout
         </button>
         <p className="pt-1 text-center text-xs text-slate-400">
-          Prices are set by {cart.branch.name} and verified at the time of ordering.
+          Prices are set by {cart.branch.name} and confirmed at checkout. Delivery fee and taxes
+          are added before you pay.
         </p>
       </div>
     </div>

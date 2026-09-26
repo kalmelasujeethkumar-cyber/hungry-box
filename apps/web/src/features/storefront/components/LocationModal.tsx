@@ -2,10 +2,11 @@ import { useState } from 'react';
 import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 import type { AddressDto } from '@hungrybox/shared';
+import { Dialog } from '../../../components/Dialog';
 import { useCart } from '../cart-context';
 import { useStorefront } from '../storefront-context';
 import ConfirmDialog from './ConfirmDialog';
-import { CloseIcon, LocationIcon } from './icons';
+import { LocationIcon } from './icons';
 
 export default function LocationModal(): JSX.Element | null {
   const {
@@ -56,36 +57,13 @@ export default function LocationModal(): JSX.Element | null {
   );
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="location-modal-title"
-      onClick={() => setLocationsOpen(false)}
-    >
-      <div
-        className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-6 sm:rounded-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h2 id="location-modal-title" className="text-lg font-bold text-brand-navy">
-            Choose delivery location
-          </h2>
-          <button
-            type="button"
-            onClick={() => setLocationsOpen(false)}
-            className="rounded-lg p-2 text-slate-500 hover:text-brand-navy"
-            aria-label="Close location picker"
-          >
-            <CloseIcon className="h-5 w-5" />
-          </button>
-        </div>
-
+    <>
+      <Dialog open onClose={() => setLocationsOpen(false)} title="Choose delivery location">
         <button
           type="button"
           onClick={() => void handleMyLocation()}
           disabled={detecting}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-brand-teal px-4 py-3 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-teal px-4 py-3 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-60"
         >
           <LocationIcon className="h-4 w-4" />
           {detecting ? 'Detecting…' : 'Use my current location'}
@@ -139,13 +117,7 @@ export default function LocationModal(): JSX.Element | null {
             })}
           </ul>
         )}
-
-        <p className="mt-4 text-center text-xs text-slate-400">
-          Currently delivering from{' '}
-          <span className="font-semibold text-slate-600">{branch ? branch.name : '…'}</span> in{' '}
-          <span className="font-semibold text-slate-600">{branch ? branch.city : '…'}</span>
-        </p>
-      </div>
+      </Dialog>
 
       <ConfirmDialog
         open={pendingTarget !== null}
@@ -161,6 +133,6 @@ export default function LocationModal(): JSX.Element | null {
         }}
         onClose={() => setPendingTarget(null)}
       />
-    </div>
+    </>
   );
 }

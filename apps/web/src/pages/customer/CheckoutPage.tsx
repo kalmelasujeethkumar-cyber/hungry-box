@@ -37,6 +37,7 @@ export default function CheckoutPage(): JSX.Element {
   const [payPhase, setPayPhase] = useState<PayPhase>('idle');
   const [payError, setPayError] = useState<string | null>(null);
   const [intent, setIntent] = useState<PaymentIntentDto | null>(null);
+  const [simulating, setSimulating] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
@@ -177,7 +178,7 @@ export default function CheckoutPage(): JSX.Element {
           return;
         }
         setPayError(
-          `The ${created.provider} payment provider is not wired up yet. Only the development simulator is available in this phase.`,
+          `Online payment via ${created.provider} is not available in this branch yet. Choose Cash on delivery instead.`,
         );
         setPayPhase('idle');
       })
@@ -211,6 +212,7 @@ export default function CheckoutPage(): JSX.Element {
   };
 
   const placeOrder = (paymentId: string): void => {
+    if (payPhase === 'placing') return;
     setPayPhase('placing');
     ordersApi
       .create(
@@ -241,6 +243,7 @@ export default function CheckoutPage(): JSX.Element {
   };
 
   const placeCodOrder = (): void => {
+    if (payPhase === 'placing') return;
     setPayPhase('placing');
     ordersApi
       .createCod(
@@ -276,6 +279,20 @@ export default function CheckoutPage(): JSX.Element {
       return;
     }
     startPayment();
+  };
+
+  const simulatePayment = (outcome: 'success' | 'failure'): void => {
+    if (!intent) return;
+    setSimulating(true);
+    setPayPhase('verifying');
+    paymentsApi
+      .devSimulate({ providerPaymentId: intent.providerPaymentId, outcome }, token!)
+      .then(() => verifyThenPlace(intent.paymentId))
+      .catch((error: unknown) => {
+        setPayError(error instanceof Error ? error.message : 'Payment simulation failed.');
+        setPayPhase('idle');
+      })
+      .finally(() => setSimulating(false));
   };
 
   const payButtonLabel = (): string => {
@@ -454,47 +471,28 @@ export default function CheckoutPage(): JSX.Element {
 
         {intent && intent.provider === 'dev' && payPhase === 'awaiting-simulation' ? (
           <div className="rounded-2xl border border-brand-sky bg-brand-sky/30 p-4">
-            <p className="text-sm font-bold text-brand-navy">Development payment simulator</p>
+            <p className="text-sm font-bold text-brand-navy">Online payment test</p>
             <p className="mt-1 text-xs leading-relaxed text-slate-600">
-              This check uses a mock provider — no real money moves. Simulate the payment to see
-              both outcomes.
+              Hungry Box is still accepting card, wallet and UPI payments through a test gateway in
+              this environment — no account is charged here. Approve the test payment to place the
+              order, or decline it to see how a failed payment is handled.
             </p>
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  paymentsApi
-                    .devSimulate(
-                      { providerPaymentId: intent.providerPaymentId, outcome: 'success' },
-                      token!,
-                    )
-                    .then(() => verifyThenPlace(intent.paymentId))
-                    .catch((error: unknown) => {
-                      setPayError(error instanceof Error ? error.message : 'Simulation failed.');
-                      setPayPhase('idle');
-                    });
-                }}
-                className="flex-1 rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-teal/90"
+                onClick={() => simulatePayment('success')}
+                disabled={simulating}
+                className="flex-1 rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-teal/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Simulate successful payment
+                Approve test payment
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  paymentsApi
-                    .devSimulate(
-                      { providerPaymentId: intent.providerPaymentId, outcome: 'failure' },
-                      token!,
-                    )
-                    .then(() => verifyThenPlace(intent.paymentId))
-                    .catch((error: unknown) => {
-                      setPayError(error instanceof Error ? error.message : 'Simulation failed.');
-                      setPayPhase('idle');
-                    });
-                }}
-                className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-600"
+                onClick={() => simulatePayment('failure')}
+                disabled={simulating}
+                className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Simulate failed payment
+                Decline test payment
               </button>
             </div>
           </div>
@@ -517,7 +515,7 @@ export default function CheckoutPage(): JSX.Element {
         <p className="text-center text-xs text-slate-400">
           {method === 'COD'
             ? 'Cash on delivery — nothing is charged up front. Pay the delivery partner when your order arrives.'
-            : 'Demo checkout with a simulated payment gateway. Your card is never touched.'}
+            : 'Online payments run on a test gateway in this environment — no card, wallet or bank is charged. Cash on delivery is fully available.'}
         </p>
       </div>
 

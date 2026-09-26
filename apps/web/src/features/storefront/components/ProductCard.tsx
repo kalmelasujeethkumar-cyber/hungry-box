@@ -50,10 +50,17 @@ export default function ProductCard({
             {product.categoryName}
           </p>
         ) : null}
-        <div className="mt-auto flex items-end justify-between pt-2">
+        <div className="mt-auto flex items-end justify-between gap-2 pt-2">
           <p className="flex flex-col">
-            <span className="font-bold text-slate-900">
-              {formatPaise(product.effectivePriceMinor)}
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span className="font-bold text-slate-900">
+                {formatPaise(product.effectivePriceMinor)}
+              </span>
+              {product.discountMinor > 0 && product.priceMinor > 0 ? (
+                <span className="rounded bg-brand-yellow px-1.5 py-0.5 text-[11px] font-bold text-slate-800">
+                  {Math.round((product.discountMinor / product.priceMinor) * 100)}% off
+                </span>
+              ) : null}
             </span>
             {product.discountMinor > 0 ? (
               <span className="text-xs text-slate-400 line-through">

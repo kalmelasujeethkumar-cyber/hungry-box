@@ -139,7 +139,7 @@ export default function DeliveryTrackingSection({
           <div>
             <p className="text-sm font-semibold text-slate-800">Delivered by {partner.fullName}</p>
             <p className="mt-0.5 text-xs text-slate-500">
-              Thanks for ordering with hungry box. Enjoy your meal!
+              Thanks for ordering with Hungry Box. Enjoy your meal!
             </p>
           </div>
         </div>

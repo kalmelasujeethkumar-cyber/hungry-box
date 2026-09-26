@@ -389,9 +389,9 @@ describe('checkout flow', () => {
     expect(screen.getByRole('radio', { name: /UPI/ })).toBeChecked();
 
     await user.click(payButton);
-    expect(await screen.findByText('Development payment simulator')).toBeInTheDocument();
+    expect(await screen.findByText('Online payment test')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Simulate successful payment' }));
+    await user.click(screen.getByRole('button', { name: 'Approve test payment' }));
 
     await waitFor(() => {
       expect(MOCK_APIS.ordersApi.create).toHaveBeenCalledWith(
@@ -425,10 +425,25 @@ describe('checkout flow', () => {
     const payButton = await screen.findByRole('button', { name: 'Pay ₹430' });
     await user.click(payButton);
 
-    await user.click(await screen.findByRole('button', { name: 'Simulate successful payment' }));
+    await user.click(await screen.findByRole('button', { name: 'Approve test payment' }));
 
     expect(await screen.findByText('Insufficient funds')).toBeInTheDocument();
     expect(MOCK_APIS.ordersApi.create).not.toHaveBeenCalled();
+  });
+
+  it('cannot place the same order twice on a double payment approval', async () => {
+    const user = userEvent.setup();
+    renderCheckout();
+
+    const payButton = await screen.findByRole('button', { name: 'Pay ₹430' });
+    await waitFor(() => expect(payButton).toBeEnabled());
+    await user.click(payButton);
+
+    const approve = await screen.findByRole('button', { name: 'Approve test payment' });
+    await user.dblClick(approve);
+
+    await waitFor(() => expect(MOCK_APIS.ordersApi.create).toHaveBeenCalledTimes(1));
+    expect(MOCK_APIS.paymentsApi.devSimulate).toHaveBeenCalledTimes(1);
   });
 
   it('places a cash-on-delivery order straight through without a gateway payment', async () => {

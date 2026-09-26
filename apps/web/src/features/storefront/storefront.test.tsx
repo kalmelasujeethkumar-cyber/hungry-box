@@ -253,7 +253,7 @@ const CART_UPDATE_ITEM: CartSummary = {
 
 function harness(ui: JSX.Element): ReturnType<typeof render> {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={['/customer/storefront']}>
       <StorefrontProvider>
         <CartProvider>
           <StorefrontHeader />
@@ -488,6 +488,57 @@ describe('mobile-first shell', () => {
     for (const label of ['Home', 'Cart', 'Orders', 'Addresses', 'Profile']) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('storefront production polish', () => {
+  it('keeps working desktop navigation with a highlighted active link', async () => {
+    harness(<StorefrontPage />);
+
+    await screen.findByText('Hyderabadi Biryani');
+
+    const navs = screen.getAllByRole('navigation', { name: 'Primary' });
+    const desktopNav = navs[0];
+    expect(desktopNav).toHaveClass('hidden');
+
+    const home = within(desktopNav).getByRole('link', { name: 'Home' });
+    const orders = within(desktopNav).getByRole('link', { name: 'Orders' });
+    expect(home).toHaveAttribute('href', '/customer/storefront');
+    expect(orders).toHaveAttribute('href', '/customer/orders');
+    expect(home).toHaveClass('text-brand-navy');
+    expect(orders).toHaveClass('text-slate-500');
+
+    const cartButton = screen.getByRole('button', { name: /Open cart/ });
+    expect(cartButton).toHaveAttribute('aria-label', 'Open cart');
+  });
+
+  it('shows a search-aware empty state and clears the search in one tap', async () => {
+    catalogApiMock.listProducts.mockResolvedValue([]);
+    const user = userEvent.setup();
+    harness(<StorefrontPage />);
+
+    expect(await screen.findByText('No items yet')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Search the menu'), 'zzz');
+
+    expect(await screen.findByText('No results found')).toBeInTheDocument();
+    expect(screen.getByText(/could not find anything matching “zzz”/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+
+    expect(await screen.findByText('No items yet')).toBeInTheDocument();
+    expect(screen.getByLabelText<HTMLInputElement>('Search the menu').value).toBe('');
+  });
+
+  it('prints a discount badge and strikethrough price on a discounted card', async () => {
+    harness(<StorefrontPage />);
+
+    const card = (await screen.findByRole('button', { name: 'View Hyderabadi Biryani' })).closest(
+      'article',
+    );
+    expect(card).not.toBeNull();
+    expect(within(card as HTMLElement).getByText('20% off')).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText('₹249')).toHaveClass('line-through');
   });
 });
 

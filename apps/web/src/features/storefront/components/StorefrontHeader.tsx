@@ -1,14 +1,21 @@
 import type { JSX } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../../../auth/auth-context';
 import { SignOutButton } from '../../../components/SignOutButton';
 import { useCart } from '../cart-context';
 import { useStorefront } from '../storefront-context';
-import { CartIcon, LocationIcon } from './icons';
+import { AddressIcon, CartIcon, HomeIcon, LocationIcon, PackageIcon, UserIcon } from './icons';
+
+const NAV_LINKS = [
+  { to: '/customer/storefront', label: 'Home', icon: HomeIcon },
+  { to: '/customer/orders', label: 'Orders', icon: PackageIcon },
+  { to: '/customer/addresses', label: 'Addresses', icon: AddressIcon },
+  { to: '/customer/profile', label: 'Profile', icon: UserIcon },
+] as const;
 
 export default function StorefrontHeader(): JSX.Element {
   const { user } = useAuth();
-  const { branch, status, setLocationsOpen } = useStorefront();
+  const { branch, setLocationsOpen } = useStorefront();
   const { hasItems, cart, setCartOpen } = useCart();
 
   const locationLabel = branch ? `${branch.name} · ${branch.city}` : 'Set delivery location';
@@ -20,7 +27,7 @@ export default function StorefrontHeader(): JSX.Element {
           to="/customer/storefront"
           className="text-xl font-extrabold tracking-tight text-brand-navy"
         >
-          hungry box
+          hungry <span className="text-brand-orange">box</span>
         </Link>
 
         <button
@@ -32,6 +39,23 @@ export default function StorefrontHeader(): JSX.Element {
           <LocationIcon className="h-4 w-4 shrink-0 text-brand-teal" />
           <span className="truncate">{locationLabel}</span>
         </button>
+
+        <nav className="hidden items-center gap-5 md:flex" aria-label="Primary">
+          {NAV_LINKS.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              className={({ isActive }) =>
+                `inline-flex items-center gap-1.5 text-sm font-bold ${
+                  isActive ? 'text-brand-navy' : 'text-slate-500 hover:text-brand-teal'
+                }`
+              }
+            >
+              <link.icon className="h-4 w-4" />
+              {link.label}
+            </NavLink>
+          ))}
+        </nav>
 
         <div className="flex items-center gap-2">
           <button
@@ -47,14 +71,9 @@ export default function StorefrontHeader(): JSX.Element {
               </span>
             ) : null}
           </button>
-          <span className="hidden text-sm text-slate-600 sm:inline">
+          <span className="hidden text-sm text-slate-600 lg:inline">
             {user?.name ?? user?.loginId}
           </span>
-          {branch && status === 'ready' ? (
-            <span className="hidden text-xs text-slate-500 md:inline">
-              {branch.deliveryRadiusKm} km delivery radius
-            </span>
-          ) : null}
           <span className="hidden sm:inline">
             <SignOutButton size="md" />
           </span>

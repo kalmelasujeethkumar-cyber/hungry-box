@@ -8,9 +8,10 @@ import type {
 } from '@hungrybox/shared';
 import { addressApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
+import { Dialog } from '../../components/Dialog';
 import EmptyState from '../../components/EmptyState';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
-import { AddressIcon, CloseIcon } from '../../features/storefront/components/icons';
+import { AddressIcon } from '../../features/storefront/components/icons';
 import { useStorefront } from '../../features/storefront/storefront-context';
 
 type FormState = {
@@ -310,36 +311,14 @@ function AddressForm({
     'w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-teal focus:outline-none';
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="address-form-title"
-      onClick={onClose}
-    >
+    <Dialog open onClose={onClose} title={address ? 'Edit address' : 'Add address'}>
       <form
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-6 sm:rounded-2xl"
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
         }}
-        onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
-          <h2 id="address-form-title" className="text-lg font-bold text-brand-navy">
-            {address ? 'Edit address' : 'Add address'}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 hover:text-brand-navy"
-            aria-label="Close address form"
-          >
-            <CloseIcon className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-xs font-semibold text-slate-600">Label</span>
             <select
@@ -484,6 +463,6 @@ function AddressForm({
           </button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }

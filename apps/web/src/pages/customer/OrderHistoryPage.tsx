@@ -11,7 +11,11 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { formatDateOnly } from '../../lib/format';
 import { formatPaise } from '../../lib/money';
-import { ORDER_STATUS_LABELS, ORDER_STATUS_TONES } from '../../features/orders/order-status';
+import {
+  ORDER_STATUS_LABELS,
+  ORDER_STATUS_TONES,
+  PAYMENT_METHOD_LABELS,
+} from '../../features/orders/order-status';
 
 type Filter = 'all' | 'active' | 'delivered' | 'cancelled';
 
@@ -140,7 +144,8 @@ export default function HistoryPage(): JSX.Element {
                           {order.orderNumber}
                         </p>
                         <p className="mt-0.5 text-xs text-slate-500">
-                          {order.branch.name} · {formatDateOnly(order.placedAt)}
+                          {order.branch.name} · {formatDateOnly(order.placedAt)} ·{' '}
+                          {order.paymentMethod ? PAYMENT_METHOD_LABELS[order.paymentMethod] : '—'}
                         </p>
                       </div>
                       <StatusBadge label={ORDER_STATUS_LABELS[order.status]} tone={ORDER_STATUS_TONES[order.status]} />

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../cart-context';
@@ -7,6 +8,20 @@ import { CloseIcon } from './icons';
 export default function CartSheet(): JSX.Element | null {
   const navigate = useNavigate();
   const { cart, loading, cartOpen, setCartOpen, updateQuantity, removeItem } = useCart();
+
+  useEffect(() => {
+    if (!cartOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setCartOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [cartOpen, setCartOpen]);
 
   if (!cartOpen) return null;
 

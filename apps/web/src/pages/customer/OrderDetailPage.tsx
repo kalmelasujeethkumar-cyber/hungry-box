@@ -6,12 +6,14 @@ import { ApiError, ordersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
+import { StatusBadge } from '../../components/StatusBadge';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import OrderTimeline from '../../features/orders/OrderTimeline';
 import DeliveryTrackingSection from '../../features/orders/DeliveryTrackingSection';
 import {
   isCustomerCancellable,
   ORDER_STATUS_LABELS,
+  ORDER_STATUS_TONES,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
 } from '../../features/orders/order-status';
@@ -96,15 +98,10 @@ export default function OrderDetailPage(): JSX.Element {
           <h1 className="text-xl font-extrabold tracking-tight text-brand-navy">
             {order.orderNumber}
           </h1>
-          <span
-            className={
-              order.status === 'CANCELLED'
-                ? 'rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700'
-                : 'rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy'
-            }
-          >
-            {ORDER_STATUS_LABELS[order.status]}
-          </span>
+          <StatusBadge
+            label={ORDER_STATUS_LABELS[order.status]}
+            tone={ORDER_STATUS_TONES[order.status]}
+          />
         </header>
         <p className="mt-1 text-sm text-slate-500">
           {order.branch.name} · placed {formatDateTime(order.placedAt)}
