@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { BranchDto, OrderStatus, OrderSummaryDto } from '@hungrybox/shared';
 import { branchOrdersApi, branchesApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { ORDER_STATUS_FILTERS } from '../../features/manager/manager-orders';
 import { ORDER_STATUS_LABELS } from '../../features/orders/order-status';

@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import { ProductImage } from '../../../components/ProductImage';
 import { useStorefront } from '../storefront-context';
 
 export default function CategoryChips(): JSX.Element | null {
@@ -37,10 +38,11 @@ export default function CategoryChips(): JSX.Element | null {
                 }`}
               >
                 {category.imageUrl ? (
-                  <img
+                  <ProductImage
                     src={category.imageUrl}
                     alt=""
-                    className="h-5 w-5 rounded-full object-cover"
+                    className="h-5 w-5 rounded-full"
+                    imgClassName="h-5 w-5 rounded-full object-cover"
                   />
                 ) : null}
                 {category.name}

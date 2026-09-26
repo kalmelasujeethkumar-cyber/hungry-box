@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import type { CatalogProduct } from '@hungrybox/shared';
+import { ProductImage } from '../../../components/ProductImage';
 import { formatPaise } from '../../../lib/money';
 import { useCart } from '../cart-context';
 
@@ -29,18 +30,13 @@ export default function ProductCard({
         aria-label={`View ${product.name}`}
         className="h-28 w-28 shrink-0 sm:h-32 sm:w-32"
       >
-        {product.imageUrl ? (
-          <img
-            src={product.imageUrl}
-            alt={product.name}
-            loading="lazy"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center bg-brand-sky text-3xl font-black text-brand-teal">
-            {product.name.charAt(0)}
-          </span>
-        )}
+        <ProductImage
+          src={product.imageUrl}
+          alt={product.name}
+          fallback={product.name.charAt(0)}
+          className="h-full w-full"
+          fallbackClassName="text-3xl"
+        />
       </button>
 
       <div className="flex min-w-0 flex-1 flex-col p-3">

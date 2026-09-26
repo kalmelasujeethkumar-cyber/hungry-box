@@ -1,12 +1,17 @@
 import type { JSX } from 'react';
 import { useAuth } from '../../auth/auth-context';
+import { PageHeader } from '../../components/PageHeader';
+import { SignOutButton } from '../../components/SignOutButton';
 
 export function ProfilePage(): JSX.Element {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   return (
     <section className="mx-auto max-w-md">
-      <h1 className="text-2xl font-extrabold tracking-tight text-brand-navy">Profile</h1>
+      <PageHeader
+        title="Profile"
+        subtitle="Your account details and sign out."
+      />
       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <dl className="divide-y divide-slate-100">
           <div className="flex justify-between px-4 py-3">
@@ -27,13 +32,9 @@ export function ProfilePage(): JSX.Element {
           </div>
         </dl>
       </div>
-      <button
-        type="button"
-        onClick={logout}
-        className="mt-4 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-orange hover:text-brand-orange"
-      >
-        Sign out
-      </button>
+      <div className="mt-4">
+        <SignOutButton className="w-full" size="md" />
+      </div>
     </section>
   );
 }

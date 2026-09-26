@@ -1,4 +1,5 @@
 import type { OrderStatus, PaymentMethod, PaymentStatus } from '@hungrybox/shared';
+import type { BadgeTone } from '../../components/StatusBadge';
 
 export const ORDER_STATUS_STEPS = [
   'PLACED',
@@ -28,6 +29,25 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   FAILED: 'Failed',
   CANCELLED: 'Cancelled',
   REFUNDED: 'Refunded',
+};
+
+export const ORDER_STATUS_TONES: Record<OrderStatus, BadgeTone> = {
+  PLACED: 'info',
+  CONFIRMED: 'info',
+  PREPARING: 'warning',
+  READY_FOR_PICKUP: 'warning',
+  OUT_FOR_DELIVERY: 'warning',
+  DELIVERED: 'success',
+  CANCELLED: 'danger',
+};
+
+export const PAYMENT_STATUS_TONES: Record<PaymentStatus, BadgeTone> = {
+  PENDING: 'neutral',
+  AUTHORIZED: 'info',
+  PAID: 'success',
+  FAILED: 'danger',
+  CANCELLED: 'neutral',
+  REFUNDED: 'info',
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

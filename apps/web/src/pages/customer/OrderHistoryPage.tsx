@@ -4,11 +4,14 @@ import { Link } from 'react-router-dom';
 import type { OrderStatus, OrderSummaryDto } from '@hungrybox/shared';
 import { ordersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import EmptyState from '../../components/EmptyState';
+import { StatusBadge } from '../../components/StatusBadge';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { formatDateOnly } from '../../lib/format';
 import { formatPaise } from '../../lib/money';
-import { ORDER_STATUS_LABELS } from '../../features/orders/order-status';
+import { ORDER_STATUS_LABELS, ORDER_STATUS_TONES } from '../../features/orders/order-status';
 
 type Filter = 'all' | 'active' | 'delivered' | 'cancelled';
 
@@ -16,16 +19,6 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'all'>, OrderStatus[]> = {
   active: ['PLACED', 'CONFIRMED', 'PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'],
   delivered: ['DELIVERED'],
   cancelled: ['CANCELLED'],
-};
-
-const STATUS_BADGE: Record<OrderStatus, string> = {
-  PLACED: 'bg-brand-sky/60 text-brand-navy',
-  CONFIRMED: 'bg-brand-sky/60 text-brand-navy',
-  PREPARING: 'bg-amber-100 text-amber-800',
-  READY_FOR_PICKUP: 'bg-amber-100 text-amber-800',
-  OUT_FOR_DELIVERY: 'bg-amber-100 text-amber-800',
-  DELIVERED: 'bg-emerald-100 text-emerald-800',
-  CANCELLED: 'bg-red-100 text-red-700',
 };
 
 export default function HistoryPage(): JSX.Element {
@@ -92,14 +85,10 @@ export default function HistoryPage(): JSX.Element {
         </p>
       </header>
 
-      {error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
 
       {loading ? (
-        <p className="py-10 text-center text-sm text-slate-500">Loading your orders…</p>
+        <LoadingState message="Loading your orders" />
       ) : orders.length === 0 ? (
         <EmptyState
           icon={<PackageIcon className="h-8 w-8" />}
@@ -154,11 +143,7 @@ export default function HistoryPage(): JSX.Element {
                           {order.branch.name} · {formatDateOnly(order.placedAt)}
                         </p>
                       </div>
-                      <span
-                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_BADGE[order.status]}`}
-                      >
-                        {ORDER_STATUS_LABELS[order.status]}
-                      </span>
+                      <StatusBadge label={ORDER_STATUS_LABELS[order.status]} tone={ORDER_STATUS_TONES[order.status]} />
                     </div>
                     <div className="mt-3 flex items-center justify-between text-sm">
                       <span className="text-slate-500">

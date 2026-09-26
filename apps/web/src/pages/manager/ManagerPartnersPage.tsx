@@ -9,7 +9,7 @@ import type {
 import { ApiError, branchDeliveryApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { PlusIcon, UserIcon } from '../../features/storefront/components/icons';
 import { AVAILABILITY_LABELS, PARTNER_STATUS_LABELS } from '../../features/delivery/delivery-status';
 import ManagerLayout from './ManagerLayout';

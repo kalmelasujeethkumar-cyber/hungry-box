@@ -4,7 +4,7 @@ import type { BranchProductDto } from '@hungrybox/shared';
 import { ApiError, branchProductsApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { formatPaise } from '../../lib/money';
 import ManagerLayout from './ManagerLayout';

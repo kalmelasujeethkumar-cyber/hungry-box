@@ -8,12 +8,19 @@ import type {
   UserListItemDto,
   UserListQuery,
   UserListResultDto,
-  UserStatus,
 } from '@hungrybox/shared';
 import { ApiError, branchesApi, usersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
+import { Button } from '../../components/Button';
+import { Dialog } from '../../components/Dialog';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
+import { SelectField } from '../../components/forms/SelectField';
+import { TextField } from '../../components/forms/TextField';
+import { userStatusLabel, userStatusTone } from '../../components/status';
 import { PlusIcon, UserIcon } from '../../features/storefront/components/icons';
 import { formatDateOnly } from '../../lib/format';
 import AdminLayout from './AdminLayout';
@@ -27,13 +34,6 @@ const MANAGER_STATUS_OPTIONS = [
   { value: 'SUSPENDED', label: 'Suspended' },
 ] as const;
 
-const MANAGER_BADGE: Record<UserStatus, string> = {
-  ACTIVE: 'rounded-full bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-700',
-  INACTIVE: 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600',
-  SUSPENDED: 'rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700',
-  PENDING: 'rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700',
-};
-
 interface UserAction {
   label: string;
   next: ManagerStatus;
@@ -42,10 +42,6 @@ interface UserAction {
 
 interface PendingManagerAction extends UserAction {
   user: UserListItemDto;
-}
-
-function managerStatusLabel(status: UserStatus): string {
-  return status.charAt(0) + status.slice(1).toLowerCase();
 }
 
 function userActions(user: UserListItemDto): UserAction[] {
@@ -273,20 +269,16 @@ export default function AdminManagersPage(): JSX.Element {
             ))}
           </select>
         </label>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 rounded-lg bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90"
-        >
+        <Button variant="accent" onClick={openCreate} className="inline-flex items-center gap-2">
           <PlusIcon className="h-4 w-4" />
           Add manager
-        </button>
+        </Button>
       </div>
 
-      {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
 
       {loading ? (
-        <p className="mt-6 text-sm text-slate-500">Loading managers…</p>
+        <LoadingState message="Loading managers" />
       ) : !result || result.items.length === 0 ? (
         <div className="mt-8">
           <EmptyState
@@ -294,14 +286,10 @@ export default function AdminManagersPage(): JSX.Element {
             title="No branch managers"
             message="Create a branch manager to run a branch."
             action={
-              <button
-                type="button"
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand-teal px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-teal/90"
-              >
+              <Button variant="accent" onClick={openCreate} className="gap-2">
                 <PlusIcon className="h-4 w-4" />
                 Add manager
-              </button>
+              </Button>
             }
           />
         </div>
@@ -322,9 +310,7 @@ export default function AdminManagersPage(): JSX.Element {
                       {manager.branchName}
                     </span>
                   ) : null}
-                  <span className={MANAGER_BADGE[manager.status]}>
-                    {managerStatusLabel(manager.status)}
-                  </span>
+                  <StatusBadge label={userStatusLabel[manager.status]} tone={userStatusTone[manager.status]} />
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -350,31 +336,31 @@ export default function AdminManagersPage(): JSX.Element {
       )}
 
       <div className="mt-6 flex items-center justify-between gap-3">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => setPage((current) => Math.max(1, current - 1))}
           disabled={page <= 1}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-40"
         >
           Previous
-        </button>
+        </Button>
         <span className="text-sm text-slate-500">
           Page {page} of {totalPages} · {result?.total ?? 0} managers
         </span>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
           disabled={page >= totalPages}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-40"
         >
           Next
-        </button>
+        </Button>
       </div>
 
       <ConfirmDialog
         open={pendingAction !== null}
         title={
-          pendingAction ? `${managerStatusLabel(pendingAction.next)} manager?` : 'Update manager'
+          pendingAction ? `${userStatusLabel[pendingAction.next]} manager?` : 'Update manager'
         }
         description={
           pendingAction ? statusActionDescription(pendingAction.user, pendingAction.next) : ''
@@ -387,128 +373,90 @@ export default function AdminManagersPage(): JSX.Element {
       />
 
       {createOpen && !created ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="create-manager-title"
+        <Dialog
+          open
+          title="Add branch manager"
+          description="The manager gets a one-time password shown immediately after creation."
+          onClose={closeCreate}
         >
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <h2 id="create-manager-title" className="text-lg font-bold text-brand-navy">
-              Add branch manager
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">
-              The manager gets a one-time password shown immediately after creation.
-            </p>
-            <div className="mt-3 space-y-3">
-              <label className="block text-sm font-semibold text-slate-700">
-                Full name
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Full name"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-brand-teal focus:outline-none"
-                />
-              </label>
-              <label className="block text-sm font-semibold text-slate-700">
-                Login id
-                <input
-                  type="text"
-                  value={loginId}
-                  onChange={(event) => setLoginId(event.target.value)}
-                  placeholder="Login id"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-brand-teal focus:outline-none"
-                />
-              </label>
-              <label className="block text-sm font-semibold text-slate-700">
-                Branch
-                <select
-                  value={managerBranchId}
-                  onChange={(event) => setManagerBranchId(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-brand-teal focus:outline-none"
-                >
-                  <option value="" disabled>
-                    Select a branch
-                  </option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {createError ? (
-              <p className="mt-3 text-sm font-semibold text-red-600">{createError}</p>
-            ) : null}
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={closeCreate}
-                disabled={saving}
-                className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-teal hover:text-brand-teal disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={submitCreate}
-                disabled={
-                  saving || name.trim() === '' || loginId.trim() === '' || managerBranchId === ''
-                }
-                className="flex-1 rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-50"
-              >
-                {saving ? 'Creating…' : 'Create manager'}
-              </button>
-            </div>
+          <div className="space-y-3">
+            <TextField
+              label="Full name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Full name"
+            />
+            <TextField
+              label="Login id"
+              value={loginId}
+              onChange={(event) => setLoginId(event.target.value)}
+              placeholder="Login id"
+            />
+            <SelectField
+              label="Branch"
+              value={managerBranchId}
+              onChange={(event) => setManagerBranchId(event.target.value)}
+            >
+              <option value="" disabled>
+                Select a branch
+              </option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
+            </SelectField>
           </div>
-        </div>
+          {createError ? <Notice tone="error">{createError}</Notice> : null}
+          <div className="mt-6 flex gap-3">
+            <Button variant="secondary" className="flex-1" onClick={closeCreate} disabled={saving}>
+              Cancel
+            </Button>
+            <Button
+              variant="accent"
+              className="flex-1"
+              onClick={submitCreate}
+              disabled={
+                saving || name.trim() === '' || loginId.trim() === '' || managerBranchId === ''
+              }
+              loading={saving}
+              loadingLabel="Creating…"
+            >
+              Create manager
+            </Button>
+          </div>
+        </Dialog>
       ) : null}
 
       {createOpen && created ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="manager-created-title"
+        <Dialog
+          open
+          title="Manager created"
+          description="Copy the one-time password now — it is shown only once."
+          onClose={closeCreated}
         >
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <h2 id="manager-created-title" className="text-lg font-bold text-brand-navy">
-              Manager created
-            </h2>
-            <p className="mt-1 text-sm text-slate-600">
-              {created.manager.name ?? created.manager.loginId} ·{' '}
-              {created.manager.branchName ?? 'Unassigned'}
-            </p>
-            <p className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-500">
-              One-time password
-            </p>
-            <p className="mt-2 select-all rounded-lg bg-brand-sky/40 p-3 font-mono text-lg font-bold text-brand-navy">
-              {created.temporaryPassword}
-            </p>
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={copyPassword}
-                className="inline-flex items-center gap-2 rounded-lg border border-brand-teal px-4 py-2 text-sm font-semibold text-brand-teal hover:bg-brand-sky/40"
-              >
-                Copy password
-              </button>
-              {copied ? (
-                <span className="text-sm font-semibold text-emerald-600">Copied</span>
-              ) : null}
-            </div>
-            <p className="mt-3 text-xs text-slate-600">Copy it now — it is shown only once.</p>
-            <button
-              type="button"
-              onClick={closeCreated}
-              className="mt-5 w-full rounded-lg bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange/90"
-            >
-              Done
-            </button>
+          <p className="text-sm text-slate-600">
+            {created.manager.name ?? created.manager.loginId} ·{' '}
+            {created.manager.branchName ?? 'Unassigned'}
+          </p>
+          <p className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-500">
+            One-time password
+          </p>
+          <p className="mt-2 select-all rounded-lg bg-brand-sky/40 p-3 font-mono text-lg font-bold text-brand-navy">
+            {created.temporaryPassword}
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <Button variant="secondary" size="sm" onClick={copyPassword}>
+              Copy password
+            </Button>
+            {copied ? (
+              <span className="text-sm font-semibold text-emerald-600">Copied</span>
+            ) : null}
           </div>
-        </div>
+          <Button className="mt-5 w-full" onClick={closeCreated}>
+            Done
+          </Button>
+        </Dialog>
       ) : null}
     </AdminLayout>
   );

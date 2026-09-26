@@ -5,7 +5,7 @@ import type { OrderDetailDto } from '@hungrybox/shared';
 import { ApiError, ordersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import OrderTimeline from '../../features/orders/OrderTimeline';
 import DeliveryTrackingSection from '../../features/orders/DeliveryTrackingSection';

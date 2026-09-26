@@ -20,10 +20,13 @@ import type {
 } from '@hungrybox/shared';
 import { adminApi, branchesApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '../../features/orders/order-status';
 import { formatPaise } from '../../lib/money';
+import { toISODate } from '../../lib/format';
 import AdminLayout from './AdminLayout';
 
 const BUCKET_OPTIONS: { value: DashboardBucket; label: string }[] = [
@@ -32,13 +35,6 @@ const BUCKET_OPTIONS: { value: DashboardBucket; label: string }[] = [
   { value: 'month', label: 'Month' },
   { value: 'year', label: 'Year' },
 ];
-
-function toISODate(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 function MetricCard({
   label,
@@ -178,10 +174,10 @@ export default function AdminOverviewPage(): JSX.Element {
         </label>
       </div>
 
-      {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
 
       {loading ? (
-        <p className="mt-6 text-sm text-slate-500">Loading overview…</p>
+        <LoadingState message="Loading overview" />
       ) : !dashboard || !hasData ? (
         <div className="mt-8">
           <EmptyState

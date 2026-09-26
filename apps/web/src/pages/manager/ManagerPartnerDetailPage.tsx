@@ -12,7 +12,7 @@ import {
   REQUIRED_VERIFICATION_DOCUMENTS,
 } from '../../features/delivery/delivery-status';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { UserIcon } from '../../features/storefront/components/icons';
 import ManagerKycCard from '../../features/delivery/ManagerKycCard';
 import { formatDateOnly } from '../../lib/format';

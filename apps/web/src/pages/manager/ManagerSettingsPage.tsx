@@ -3,6 +3,11 @@ import { useCallback, useEffect, useState } from 'react';
 import type { BranchDto } from '@hungrybox/shared';
 import { ApiError, branchSettingsApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
+import { Button } from '../../components/Button';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { TextField } from '../../components/forms/TextField';
+import { TextareaField } from '../../components/forms/TextareaField';
 import ManagerLayout from './ManagerLayout';
 
 export default function ManagerSettingsPage(): JSX.Element {
@@ -57,44 +62,33 @@ export default function ManagerSettingsPage(): JSX.Element {
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
               Delivery configuration
             </h2>
-            <label className="mt-4 block text-sm font-semibold text-slate-700">
-              Delivery radius (km)
-              <input
-                type="number"
-                min={1}
-                max={50}
-                step={0.5}
-                value={deliveryRadiusKm}
-                onChange={(event) => setDeliveryRadiusKm(Number(event.target.value))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
+            <TextField
+              label="Delivery radius (km)"
+              type="number"
+              min={1}
+              max={50}
+              step={0.5}
+              value={deliveryRadiusKm}
+              onChange={(event) => setDeliveryRadiusKm(Number(event.target.value))}
+              className="mt-1"
+            />
             <p className="mt-2 text-xs text-slate-500">
               Orders are only accepted from addresses inside this radius. The radius is stored as
               branch configuration, not a constant.
             </p>
-            <label className="mt-4 block text-sm font-semibold text-slate-700">
-              Branch address
-              <textarea
-                value={address}
-                onChange={(event) => setAddress(event.target.value)}
-                rows={3}
-                maxLength={500}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
-            {error ? <p className="mt-3 text-sm font-semibold text-red-600">{error}</p> : null}
-            {notice ? (
-              <p className="mt-3 text-sm font-semibold text-emerald-600">{notice}</p>
-            ) : null}
-            <button
-              type="button"
-              onClick={save}
-              disabled={busy}
-              className="mt-5 rounded-lg bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange/90 disabled:opacity-50"
-            >
+            <TextareaField
+              label="Branch address"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              rows={3}
+              maxLength={500}
+              className="mt-1"
+            />
+            {error ? <Notice tone="error">{error}</Notice> : null}
+            {notice ? <Notice tone="success">{notice}</Notice> : null}
+            <Button onClick={save} disabled={busy} loading={busy} loadingLabel="Saving…" className="mt-5">
               Save settings
-            </button>
+            </Button>
           </section>
 
           <aside className="space-y-4">
@@ -108,8 +102,10 @@ export default function ManagerSettingsPage(): JSX.Element {
             </section>
           </aside>
         </div>
+      ) : error ? (
+        <Notice tone="error">{error}</Notice>
       ) : (
-        <p className="mt-6 text-sm text-slate-500">{error ?? 'Loading settings…'}</p>
+        <LoadingState message="Loading settings" />
       )}
     </ManagerLayout>
   );

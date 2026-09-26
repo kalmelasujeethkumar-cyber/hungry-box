@@ -3,6 +3,9 @@ import { useState } from 'react';
 import type { DeliveryAssignmentDto } from '@hungrybox/shared';
 import { ApiError, deliveryPartnerApi } from '../../api/client';
 import ConfirmDialog from '../storefront/components/ConfirmDialog';
+import { Notice } from '../../components/Notice';
+import { CheckboxField } from '../../components/forms/CheckboxField';
+import { TextareaField } from '../../components/forms/TextareaField';
 import { formatPaise } from '../../lib/money';
 
 function mapsUrlFor(address: DeliveryAssignmentDto['order']['address']): string {
@@ -94,7 +97,7 @@ export default function AssignmentActionPanel({
   if (assignment.status === 'ASSIGNED') {
     return (
       <div className="rounded-2xl border border-brand-yellow/60 bg-brand-yellow/10 p-4">
-        {error ? <p className="mb-3 text-sm font-semibold text-red-600">{error}</p> : null}
+        {error ? <Notice tone="error">{error}</Notice> : null}
         <p className="text-sm font-bold text-brand-navy">Do you want this delivery?</p>
         <div className="mt-3 flex gap-3">
           <button
@@ -124,13 +127,14 @@ export default function AssignmentActionPanel({
           onConfirm={confirmReject}
           onClose={() => setRejectOpen(false)}
         >
-          <textarea
+          <TextareaField
+            label="Reason for rejecting"
+            required
             value={rejectReason}
             onChange={(event) => setRejectReason(event.target.value)}
             placeholder="Reason (e.g. distance too far, vehicle issue)"
             maxLength={200}
             rows={2}
-            className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-brand-teal focus:outline-none"
           />
         </ConfirmDialog>
       </div>
@@ -144,7 +148,7 @@ export default function AssignmentActionPanel({
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      {error ? <p className="mb-3 text-sm font-semibold text-red-600">{error}</p> : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
       <div className="flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
@@ -177,18 +181,14 @@ export default function AssignmentActionPanel({
           setCashConfirmed(false);
         }}
       >
-        <label className="mt-3 flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
-          <input
-            type="checkbox"
+        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5">
+          <CheckboxField
             checked={cashConfirmed}
             onChange={(event) => setCashConfirmed(event.target.checked)}
-            className="mt-0.5 accent-brand-teal"
+            label="Cash received"
+            description={`I received ${formatPaise(assignment.order.totalMinor)} in cash from the customer.`}
           />
-          <span>
-            I received <span className="font-bold">{formatPaise(assignment.order.totalMinor)}</span>{' '}
-            in cash from the customer.
-          </span>
-        </label>
+        </div>
       </ConfirmDialog>
     </div>
   );

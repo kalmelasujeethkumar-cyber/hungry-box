@@ -1,16 +1,13 @@
 import type { JSX } from 'react';
 
-export default function EmptyState({
-  icon,
-  title,
-  message,
-  action,
-}: {
+export interface EmptyStateProps {
   icon: JSX.Element;
   title: string;
   message: string;
   action?: JSX.Element;
-}): JSX.Element {
+}
+
+export default function EmptyState({ icon, title, message, action }: EmptyStateProps): JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-sky text-brand-navy">

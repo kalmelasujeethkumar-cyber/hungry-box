@@ -1,12 +1,13 @@
 import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../../auth/auth-context';
+import { SignOutButton } from '../../../components/SignOutButton';
 import { useCart } from '../cart-context';
 import { useStorefront } from '../storefront-context';
 import { CartIcon, LocationIcon } from './icons';
 
 export default function StorefrontHeader(): JSX.Element {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { branch, status, setLocationsOpen } = useStorefront();
   const { hasItems, cart, setCartOpen } = useCart();
 
@@ -54,13 +55,9 @@ export default function StorefrontHeader(): JSX.Element {
               {branch.deliveryRadiusKm} km delivery radius
             </span>
           ) : null}
-          <button
-            type="button"
-            onClick={logout}
-            className="hidden rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-brand-teal hover:text-brand-teal sm:inline"
-          >
-            Sign out
-          </button>
+          <span className="hidden sm:inline">
+            <SignOutButton size="md" />
+          </span>
         </div>
       </div>
     </header>

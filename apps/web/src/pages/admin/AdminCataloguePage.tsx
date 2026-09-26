@@ -10,7 +10,7 @@ import type {
 import { categoriesApi, productsApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import {
   CloseIcon,
   PackageIcon,

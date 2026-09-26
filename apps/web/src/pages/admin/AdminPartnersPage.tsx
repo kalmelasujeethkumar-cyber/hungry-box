@@ -9,14 +9,19 @@ import type {
 } from '@hungrybox/shared';
 import { branchKycApi, branchesApi, branchDeliveryApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
 import { UserIcon } from '../../features/storefront/components/icons';
 import {
   AVAILABILITY_LABELS,
+  AVAILABILITY_TONES,
   KYC_DOCUMENT_LABELS,
-  KYC_OVERALL_CHIP_CLASSES,
   KYC_OVERALL_LABELS,
+  KYC_OVERALL_TONES,
   PARTNER_STATUS_LABELS,
+  PARTNER_STATUS_TONES,
 } from '../../features/delivery/delivery-status';
 import AdminLayout from './AdminLayout';
 
@@ -134,11 +139,11 @@ export default function AdminPartnersPage(): JSX.Element {
         </select>
       </div>
 
-      {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
-      {kycError ? <p className="mt-4 text-sm font-semibold text-red-600">{kycError}</p> : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
+      {kycError ? <Notice tone="error">{kycError}</Notice> : null}
 
       {loading ? (
-        <p className="mt-6 text-sm text-slate-500">Loading partners…</p>
+        <LoadingState message="Loading partners" />
       ) : partners.length === 0 ? (
         <div className="mt-8">
           <EmptyState
@@ -171,10 +176,11 @@ export default function AdminPartnersPage(): JSX.Element {
                 <div className="flex shrink-0 items-center gap-2">
                   {kyc ? (
                     <>
-                      <span
-                        className={`hidden rounded-full px-2.5 py-1 text-xs font-bold sm:inline-block ${KYC_OVERALL_CHIP_CLASSES[kyc.overallState]}`}
-                      >
-                        {KYC_OVERALL_LABELS[kyc.overallState]}
+                      <span className="hidden sm:inline-block">
+                        <StatusBadge
+                          label={KYC_OVERALL_LABELS[kyc.overallState]}
+                          tone={KYC_OVERALL_TONES[kyc.overallState]}
+                        />
                       </span>
                       {kyc.hasAadhaar ? (
                         <button
@@ -196,12 +202,8 @@ export default function AdminPartnersPage(): JSX.Element {
                       ) : null}
                     </>
                   ) : null}
-                  <span className="rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy">
-                    {AVAILABILITY_LABELS[partner.availability]}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-                    {PARTNER_STATUS_LABELS[partner.status]}
-                  </span>
+                  <StatusBadge label={AVAILABILITY_LABELS[partner.availability]} tone={AVAILABILITY_TONES[partner.availability]} />
+                  <StatusBadge label={PARTNER_STATUS_LABELS[partner.status]} tone={PARTNER_STATUS_TONES[partner.status]} />
                 </div>
               </li>
             );

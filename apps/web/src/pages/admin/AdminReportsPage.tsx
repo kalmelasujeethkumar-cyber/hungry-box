@@ -15,17 +15,21 @@ import type {
   AdminDashboardQuery,
   AdminReportQuery,
   BranchDto,
-  BranchStatus,
   DashboardBucket,
   DashboardSummaryDto,
   OrderStatus,
 } from '@hungrybox/shared';
 import { adminApi, ApiError, branchesApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
+import { branchStatusLabel, branchStatusTone } from '../../components/status';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '../../features/orders/order-status';
 import { formatPaise } from '../../lib/money';
+import { toISODate } from '../../lib/format';
 import AdminLayout from './AdminLayout';
 
 const BUCKET_OPTIONS: { value: DashboardBucket; label: string }[] = [
@@ -42,25 +46,6 @@ const STATUS_OPTIONS: { value: '' | OrderStatus; label: string }[] = [
     label: ORDER_STATUS_LABELS[status],
   })),
 ];
-
-function toISODate(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function BranchStatusBadge({ status }: { status: BranchStatus }): JSX.Element {
-  const classes =
-    status === 'ACTIVE'
-      ? 'bg-emerald-100 text-emerald-700'
-      : status === 'PAUSED'
-        ? 'bg-amber-100 text-amber-700'
-        : 'bg-slate-100 text-slate-600';
-  return (
-    <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${classes}`}>{status}</span>
-  );
-}
 
 function BreakdownTable({
   title,
@@ -262,13 +247,11 @@ export default function AdminReportsPage(): JSX.Element {
         </button>
       </div>
 
-      {exportError ? (
-        <p className="mt-4 text-sm font-semibold text-red-600">{exportError}</p>
-      ) : null}
-      {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
+      {exportError ? <Notice tone="error">{exportError}</Notice> : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
 
       {loading ? (
-        <p className="mt-6 text-sm text-slate-500">Loading reports…</p>
+        <LoadingState message="Loading reports" />
       ) : !dashboard || !hasData ? (
         <div className="mt-8">
           <EmptyState
@@ -355,7 +338,10 @@ export default function AdminReportsPage(): JSX.Element {
                         {branch.branchName}
                       </td>
                       <td className="py-2.5 pr-2">
-                        <BranchStatusBadge status={branch.status} />
+                        <StatusBadge
+                          label={branchStatusLabel[branch.status]}
+                          tone={branchStatusTone[branch.status]}
+                        />
                       </td>
                       <td className="py-2.5 pr-2 text-right text-slate-700">{branch.orders}</td>
                       <td className="py-2.5 text-right text-slate-700">

@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import type { OrderDetailDto } from '@hungrybox/shared';
 import { ordersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { formatPaise } from '../../lib/money';
 

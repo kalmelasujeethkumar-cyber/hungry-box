@@ -3,12 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import type { KycDocumentType, KycStatusDto } from '@hungrybox/shared';
 import { deliveryPartnerApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
 import {
   KYC_DOCUMENT_LABELS,
   KYC_DOCUMENT_STATUS_LABELS,
   KYC_DOCUMENT_TYPES,
-  KYC_OVERALL_CHIP_CLASSES,
   KYC_OVERALL_LABELS,
+  KYC_OVERALL_TONES,
 } from './delivery-status';
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png'];
@@ -91,9 +93,7 @@ export default function PartnerKycCard(): JSX.Element {
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">KYC verification</h2>
         {kyc ? (
-          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${KYC_OVERALL_CHIP_CLASSES[kyc.overallState]}`}>
-            {KYC_OVERALL_LABELS[kyc.overallState]}
-          </span>
+          <StatusBadge label={KYC_OVERALL_LABELS[kyc.overallState]} tone={KYC_OVERALL_TONES[kyc.overallState]} />
         ) : null}
       </div>
 
@@ -102,9 +102,7 @@ export default function PartnerKycCard(): JSX.Element {
         stored privately and reviewed by your branch manager.
       </p>
 
-      {error ? (
-        <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p>
-      ) : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
 
       <ul className="mt-3 divide-y divide-slate-100">
         {KYC_DOCUMENT_TYPES.map((type) => {

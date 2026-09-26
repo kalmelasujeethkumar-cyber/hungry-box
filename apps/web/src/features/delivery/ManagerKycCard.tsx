@@ -1,26 +1,20 @@
 import type { JSX } from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import type { KycDocumentStatus, KycDocumentType, KycStatusDto } from '@hungrybox/shared';
+import type { KycDocumentType, KycStatusDto } from '@hungrybox/shared';
 import { branchKycApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
+import { TextareaField } from '../../components/forms/TextareaField';
 import {
   KYC_DOCUMENT_LABELS,
   KYC_DOCUMENT_STATUS_LABELS,
+  KYC_DOCUMENT_STATUS_TONES,
   KYC_DOCUMENT_TYPES,
   KYC_OVERALL_LABELS,
+  KYC_OVERALL_TONES,
 } from './delivery-status';
 import ConfirmDialog from '../storefront/components/ConfirmDialog';
-
-function statusChip(status: KycDocumentStatus): string {
-  switch (status) {
-    case 'VERIFIED':
-      return 'bg-emerald-100 text-emerald-800';
-    case 'REJECTED':
-      return 'bg-red-100 text-red-700';
-    default:
-      return 'bg-slate-100 text-slate-600';
-  }
-}
 
 export default function ManagerKycCard({ partnerId }: { partnerId: string | undefined }): JSX.Element {
   const { token } = useAuth();
@@ -94,18 +88,14 @@ export default function ManagerKycCard({ partnerId }: { partnerId: string | unde
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">KYC review</h2>
         {kyc ? (
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-            {KYC_OVERALL_LABELS[kyc.overallState]}
-          </span>
+          <StatusBadge label={KYC_OVERALL_LABELS[kyc.overallState]} tone={KYC_OVERALL_TONES[kyc.overallState]} />
         ) : null}
       </div>
       <p className="mt-1 text-xs text-slate-500">
         Securely review the partner&apos;s Aadhaar and driving licence images before verification.
       </p>
 
-      {error ? (
-        <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p>
-      ) : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
 
       <ul className="mt-3 divide-y divide-slate-100">
         {KYC_DOCUMENT_TYPES.map((type) => {
@@ -128,9 +118,10 @@ export default function ManagerKycCard({ partnerId }: { partnerId: string | unde
                 ) : null}
               </div>
               <div className="flex items-center gap-2">
-                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusChip(status)}`}>
-                  {KYC_DOCUMENT_STATUS_LABELS[status]}
-                </span>
+                <StatusBadge
+                  label={KYC_DOCUMENT_STATUS_LABELS[status]}
+                  tone={KYC_DOCUMENT_STATUS_TONES[status]}
+                />
                 {canView ? (
                   <button
                     type="button"
@@ -180,13 +171,14 @@ export default function ManagerKycCard({ partnerId }: { partnerId: string | unde
         onConfirm={confirmReject}
         onClose={() => setRejectType(null)}
       >
-        <textarea
+        <TextareaField
+          label="Reason for rejection"
+          required
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           placeholder="Reason (required)"
           maxLength={500}
           rows={2}
-          className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-brand-teal focus:outline-none"
         />
       </ConfirmDialog>
     </section>

@@ -5,7 +5,7 @@ import { catalogApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import { useCart } from '../../features/storefront/cart-context';
 import CategoryChips from '../../features/storefront/components/CategoryChips';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import LocationBanner from '../../features/storefront/components/LocationBanner';
 import ProductDetailModal from '../../features/storefront/components/ProductDetailModal';
 import ProductGrid from '../../features/storefront/components/ProductGrid';

@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import type { OrderStatus, OrderSummaryDto } from '@hungrybox/shared';
 import { branchOrdersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { ORDER_STATUS_LABELS } from '../../features/orders/order-status';
 import { ORDER_STATUS_FILTERS } from '../../features/manager/manager-orders';

@@ -5,7 +5,7 @@ import { deliveryPartnerApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import { AssignmentListItemCard } from '../../features/delivery/AssignmentCard';
 import { ASSIGNMENT_STATUS_LABELS } from '../../features/delivery/delivery-status';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { PackageIcon } from '../../features/storefront/components/icons';
 
 const FILTERS = [

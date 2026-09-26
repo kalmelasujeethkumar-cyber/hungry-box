@@ -2,7 +2,7 @@ import type { JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../../features/storefront/cart-context';
 import CartContents from '../../features/storefront/components/CartContents';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { CartIcon } from '../../features/storefront/components/icons';
 
 export default function CartPage(): JSX.Element {

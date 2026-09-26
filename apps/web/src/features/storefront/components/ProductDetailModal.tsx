@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import type { CatalogProductDetail } from '@hungrybox/shared';
+import { ProductImage } from '../../../components/ProductImage';
 import { formatPaise } from '../../../lib/money';
 import { useCart } from '../cart-context';
 import { CloseIcon } from './icons';
@@ -32,13 +33,14 @@ export default function ProductDetailModal({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="relative">
-          {detail.imageUrl ? (
-            <img src={detail.imageUrl} alt={detail.name} className="h-56 w-full object-cover" />
-          ) : (
-            <div className="flex h-56 w-full items-center justify-center bg-brand-sky text-6xl font-black text-brand-teal">
-              {detail.name.charAt(0)}
-            </div>
-          )}
+          <ProductImage
+            src={detail.imageUrl}
+            alt={detail.name}
+            fallback={detail.name.charAt(0)}
+            className="h-56 w-full"
+            imgClassName="h-56 w-full object-cover"
+            fallbackClassName="text-6xl"
+          />
           <button
             type="button"
             onClick={onClose}

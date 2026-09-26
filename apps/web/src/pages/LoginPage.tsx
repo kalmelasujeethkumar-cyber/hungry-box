@@ -4,6 +4,9 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/auth-context';
 import { homePathForRole } from '../auth/role-paths';
+import { Button } from '../components/Button';
+import { Notice } from '../components/Notice';
+import { TextField } from '../components/forms/TextField';
 import { HOME_PATH, LOGIN_PATH } from '../routes/paths';
 
 const DEMO_HINT = 'Demo accounts: admin@gmail.com · branch1@gmail.com · shiva@ (see AGENTS.md)';
@@ -45,45 +48,28 @@ export default function LoginPage(): JSX.Element {
         <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-brand-navy">hungry box</h1>
 
         <form className="mt-8 flex flex-col gap-4" onSubmit={(event) => void handleSubmit(event)}>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-700">Login ID or email</span>
-            <input
-              type="text"
-              autoComplete="username"
-              required
-              value={loginId}
-              onChange={(event) => setLoginId(event.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20"
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-700">Password</span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20"
-            />
-          </label>
+          <TextField
+            label="Login ID or email"
+            type="text"
+            autoComplete="username"
+            required
+            value={loginId}
+            onChange={(event) => setLoginId(event.target.value)}
+          />
+          <TextField
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
 
-          {error ? (
-            <p
-              role="alert"
-              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-            >
-              {error}
-            </p>
-          ) : null}
+          {error ? <Notice tone="error">{error}</Notice> : null}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-2 rounded-lg bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-orange/90 disabled:opacity-60"
-          >
-            {submitting ? 'Signing in…' : 'Sign in'}
-          </button>
+          <Button type="submit" loading={submitting} loadingLabel="Signing in…" className="mt-2">
+            Sign in
+          </Button>
         </form>
 
         <p className="mt-6 text-xs leading-relaxed text-slate-500">{DEMO_HINT}</p>

@@ -1,6 +1,7 @@
 import type { JSX, ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth/auth-context';
+import { SignOutButton } from '../../components/SignOutButton';
 import { HOME_PATH } from '../../routes/paths';
 
 const NAV = [
@@ -23,7 +24,7 @@ export default function AdminLayout({
   kicker: string;
   children: ReactNode;
 }): JSX.Element {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -32,28 +33,28 @@ export default function AdminLayout({
           <Link to={HOME_PATH} className="text-xl font-extrabold tracking-tight text-brand-navy">
             hungry box
           </Link>
-          <nav className="hidden items-center gap-1 lg:flex">
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="Admin navigation">
             {NAV.map((item) => (
-              <Link
+              <NavLink
                 key={item.to}
                 to={item.to}
-                className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-slate-600 hover:text-brand-teal"
+                end={item.to === '/admin'}
+                className={({ isActive }) =>
+                  [
+                    'rounded-lg px-2.5 py-1.5 text-sm font-semibold',
+                    isActive ? 'bg-brand-sky/40 text-brand-navy' : 'text-slate-600 hover:text-brand-teal',
+                  ].join(' ')
+                }
               >
                 {item.label}
-              </Link>
+              </NavLink>
             ))}
           </nav>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-slate-600 sm:inline">
               {user?.name ?? user?.loginId}
             </span>
-            <button
-              type="button"
-              onClick={logout}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-brand-teal hover:text-brand-teal"
-            >
-              Sign out
-            </button>
+            <SignOutButton />
           </div>
         </div>
       </header>
@@ -68,13 +69,19 @@ export default function AdminLayout({
           </div>
           <div className="flex flex-wrap gap-2 lg:hidden" aria-label="Admin navigation">
             {NAV.map((item) => (
-              <Link
+              <NavLink
                 key={item.to}
                 to={item.to}
-                className="rounded-lg bg-brand-sky/40 px-3 py-1.5 text-sm font-semibold text-brand-navy"
+                end={item.to === '/admin'}
+                className={({ isActive }) =>
+                  [
+                    'rounded-lg px-3 py-1.5 text-sm font-semibold',
+                    isActive ? 'bg-brand-teal text-white' : 'bg-brand-sky/40 text-brand-navy',
+                  ].join(' ')
+                }
               >
                 {item.label}
-              </Link>
+              </NavLink>
             ))}
           </div>
         </div>

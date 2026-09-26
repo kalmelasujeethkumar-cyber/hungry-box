@@ -11,7 +11,7 @@ import AssignmentActionPanel from '../../features/delivery/AssignmentActionPanel
 import { AssignmentCard, AssignmentListItemCard } from '../../features/delivery/AssignmentCard';
 import { AVAILABILITY_LABELS, isActiveAssignmentStatus } from '../../features/delivery/delivery-status';
 import { useDeliveryRealtime } from '../../features/delivery/use-delivery-realtime';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { LocationIcon, PackageIcon } from '../../features/storefront/components/icons';
 import { formatDateOnly } from '../../lib/format';
 

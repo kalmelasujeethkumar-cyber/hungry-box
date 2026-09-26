@@ -5,12 +5,15 @@ import { deliveryPartnerApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import {
   DOCUMENT_STATUS_LABELS,
+  DOCUMENT_STATUS_TONES,
   DOCUMENT_TYPE_LABELS,
   PARTNER_STATUS_LABELS,
   PARTNER_TYPE_LABELS,
 } from '../../features/delivery/delivery-status';
 import PartnerKycCard from '../../features/delivery/PartnerKycCard';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
+import { LoadingState } from '../../components/LoadingState';
+import { StatusBadge } from '../../components/StatusBadge';
 import { UserIcon } from '../../features/storefront/components/icons';
 import { formatDateOnly } from '../../lib/format';
 
@@ -44,7 +47,7 @@ export default function DeliveryProfilePage(): JSX.Element {
     );
   }
   if (!profile) {
-    return <p className="py-16 text-center text-sm text-slate-500">Loading profile…</p>;
+    return <LoadingState message="Loading profile" />;
   }
 
   const verifiedDocuments = profile.documents.filter((doc) => doc.status === 'VERIFIED').length;
@@ -119,9 +122,7 @@ export default function DeliveryProfilePage(): JSX.Element {
                   <p className="text-xs text-slate-500">{doc.documentReference}</p>
                 ) : null}
               </div>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-                {DOCUMENT_STATUS_LABELS[doc.status]}
-              </span>
+              <StatusBadge label={DOCUMENT_STATUS_LABELS[doc.status]} tone={DOCUMENT_STATUS_TONES[doc.status]} />
             </li>
           ))}
         </ul>

@@ -1,21 +1,23 @@
 import type { JSX } from 'react';
 import type { DeliveryAssignmentDto, DeliveryAssignmentListItemDto } from '@hungrybox/shared';
+import { StatusBadge, badgeToneClass } from '../../components/StatusBadge';
 import { formatDateTime } from '../../lib/format';
 import { formatPaise } from '../../lib/money';
-import { ASSIGNMENT_STATUS_LABELS, isActiveAssignmentStatus } from './delivery-status';
+import {
+  ASSIGNMENT_STATUS_LABELS,
+  ASSIGNMENT_STATUS_TONES,
+  isActiveAssignmentStatus,
+} from './delivery-status';
+import type { BadgeTone } from '../../components/StatusBadge';
 
-const STATUS_BADGE: Record<string, string> = {
-  ASSIGNED: 'bg-brand-yellow/30 text-amber-900',
-  ACCEPTED: 'bg-brand-sky/60 text-brand-navy',
-  PICKED_UP: 'bg-brand-sky/60 text-brand-navy',
-  OUT_FOR_DELIVERY: 'bg-brand-sky/60 text-brand-navy',
-  DELIVERED: 'bg-emerald-100 text-emerald-800',
-  REJECTED: 'bg-red-100 text-red-700',
-  CANCELLED: 'bg-slate-200 text-slate-600',
-};
+const TONE_FOR_STATUS: Record<string, BadgeTone> = ASSIGNMENT_STATUS_TONES;
 
 export function statusBadgeClass(status: string): string {
-  return STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-600';
+  return badgeToneClass[TONE_FOR_STATUS[status] ?? 'neutral'];
+}
+
+function statusTone(status: string): BadgeTone {
+  return TONE_FOR_STATUS[status] ?? 'neutral';
 }
 
 export function AssignmentCard({ assignment }: { assignment: DeliveryAssignmentDto }): JSX.Element {
@@ -37,11 +39,7 @@ export function AssignmentCard({ assignment }: { assignment: DeliveryAssignmentD
             Assigned {formatDateTime(assignment.assignedAt)}
           </p>
         </div>
-        <span
-          className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusBadgeClass(assignment.status)}`}
-        >
-          {ASSIGNMENT_STATUS_LABELS[assignment.status]}
-        </span>
+        <StatusBadge label={ASSIGNMENT_STATUS_LABELS[assignment.status]} tone={statusTone(assignment.status)} />
       </header>
       <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
         <div>
@@ -92,12 +90,8 @@ export function AssignmentListItemCard({
             {formatDateTime(assignment.assignedAt)}
           </p>
         </div>
-        <span
-          className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusBadgeClass(assignment.status)}`}
-        >
-          {ASSIGNMENT_STATUS_LABELS[assignment.status]}
-        </span>
-      </div>
+        <StatusBadge label={ASSIGNMENT_STATUS_LABELS[assignment.status]} tone={statusTone(assignment.status)} />
+        </div>
       <p className="mt-2 text-sm font-bold text-slate-900">{formatPaise(assignment.totalMinor)}</p>
     </article>
   );

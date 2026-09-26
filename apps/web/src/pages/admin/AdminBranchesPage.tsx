@@ -9,15 +9,15 @@ import type {
 import { ApiError, branchesApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
+import { Button } from '../../components/Button';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
+import { TextField } from '../../components/forms/TextField';
+import { branchStatusLabel, branchStatusTone } from '../../components/status';
 import { LocationIcon } from '../../features/storefront/components/icons';
 import AdminLayout from './AdminLayout';
-
-const STATUS_BADGE: Record<BranchStatus, string> = {
-  ACTIVE: 'rounded-full bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-700',
-  PAUSED: 'rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700',
-  INACTIVE: 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600',
-};
 
 const STATUS_ACTIONS: Record<
   BranchStatus,
@@ -33,10 +33,6 @@ const STATUS_ACTIONS: Record<
   ],
   INACTIVE: [{ label: 'Activate', next: 'ACTIVE' }],
 };
-
-function branchStatusLabel(status: BranchStatus): string {
-  return status.charAt(0) + status.slice(1).toLowerCase();
-}
 
 function statusChangeDescription(branch: BranchDto, status: BranchStatus): string {
   if (status === 'INACTIVE') {
@@ -97,7 +93,7 @@ export default function AdminBranchesPage(): JSX.Element {
       .then((updated) => {
         setBranches((current) => current.map((b) => (b.id === updated.id ? updated : b)));
         setSuccessMessage(
-          `${pending.branch.name} marked as ${branchStatusLabel(pending.status).toLowerCase()}.`,
+          `${pending.branch.name} marked as ${branchStatusLabel[pending.status].toLowerCase()}.`,
         );
       })
       .catch((err: unknown) =>
@@ -144,12 +140,12 @@ export default function AdminBranchesPage(): JSX.Element {
   return (
     <AdminLayout kicker="Branch locations" title="Branches">
       {successMessage ? (
-        <p className="mt-6 text-sm font-semibold text-emerald-600">{successMessage}</p>
+        <Notice tone="success">{successMessage}</Notice>
       ) : null}
-      {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
 
       {loading ? (
-        <p className="mt-6 text-sm text-slate-500">Loading branches…</p>
+        <LoadingState message="Loading branches" />
       ) : branches.length === 0 ? (
         <div className="mt-8">
           <EmptyState
@@ -172,10 +168,8 @@ export default function AdminBranchesPage(): JSX.Element {
                     <p className="mt-1 text-sm text-slate-600">{branch.address}</p>
                   ) : null}
                 </div>
-                <span className={STATUS_BADGE[branch.status]}>
-                  {branchStatusLabel(branch.status)}
-                </span>
-              </div>
+                <StatusBadge label={branchStatusLabel[branch.status]} tone={branchStatusTone[branch.status]} />
+                </div>
 
               <div className="mt-3">
                 <span className="rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy">
@@ -212,42 +206,32 @@ export default function AdminBranchesPage(): JSX.Element {
               </div>
 
               {editingId === branch.id ? (
-                <div className="mt-4 rounded-xl bg-slate-50 p-4">
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Delivery radius (km)
-                    <input
-                      type="number"
-                      min={1}
-                      step={0.5}
-                      value={editRadius}
-                      onChange={(event) => setEditRadius(Number(event.target.value))}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                    />
-                  </label>
-                  <label className="mt-3 block text-sm font-semibold text-slate-700">
-                    Address
-                    <input
-                      type="text"
-                      value={editAddress}
-                      onChange={(event) => setEditAddress(event.target.value)}
-                      placeholder="Street, area, city"
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                    />
-                  </label>
-                  {editError ? (
-                    <p className="mt-3 text-sm font-semibold text-red-600">{editError}</p>
-                  ) : null}
-                  {editNotice ? (
-                    <p className="mt-3 text-sm font-semibold text-emerald-600">{editNotice}</p>
-                  ) : null}
-                  <button
-                    type="button"
+                <div className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4">
+                  <TextField
+                    label="Delivery radius (km)"
+                    type="number"
+                    min={1}
+                    step={0.5}
+                    value={editRadius}
+                    onChange={(event) => setEditRadius(Number(event.target.value))}
+                  />
+                  <TextField
+                    label="Address"
+                    type="text"
+                    value={editAddress}
+                    onChange={(event) => setEditAddress(event.target.value)}
+                    placeholder="Street, area, city"
+                  />
+                  {editError ? <Notice tone="error">{editError}</Notice> : null}
+                  {editNotice ? <Notice tone="success">{editNotice}</Notice> : null}
+                  <Button
                     onClick={saveEdit}
                     disabled={editBusy || editRadius < 1}
-                    className="mt-4 rounded-lg bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange/90 disabled:opacity-50"
+                    loading={editBusy}
+                    loadingLabel="Saving…"
                   >
-                    {editBusy ? 'Saving…' : 'Save changes'}
-                  </button>
+                    Save changes
+                  </Button>
                 </div>
               ) : null}
             </article>
@@ -259,13 +243,13 @@ export default function AdminBranchesPage(): JSX.Element {
         open={pendingStatus !== null}
         title={
           pendingStatus
-            ? `${branchStatusLabel(pendingStatus.status)} ${pendingStatus.branch.name}?`
+            ? `${branchStatusLabel[pendingStatus.status]} ${pendingStatus.branch.name}?`
             : 'Update branch'
         }
         description={
           pendingStatus ? statusChangeDescription(pendingStatus.branch, pendingStatus.status) : ''
         }
-        confirmLabel={pendingStatus ? branchStatusLabel(pendingStatus.status) : 'Confirm'}
+        confirmLabel={pendingStatus ? branchStatusLabel[pendingStatus.status] : 'Confirm'}
         cancelLabel="Cancel"
         danger={pendingStatus?.status === 'INACTIVE'}
         onConfirm={applyStatus}

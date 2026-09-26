@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
 import { NavLink, Link, Outlet } from 'react-router-dom';
-import { useAuth } from '../../auth/auth-context';
+import { SignOutButton } from '../../components/SignOutButton';
 import { RealtimeIndicator } from '../../features/delivery/use-delivery-realtime';
 import { HomeIcon, PackageIcon, UserIcon } from '../../features/storefront/components/icons';
 import { HOME_PATH } from '../../routes/paths';
@@ -12,8 +12,6 @@ const NAV_ITEMS = [
 ];
 
 export default function DeliveryLayout(): JSX.Element {
-  const { logout } = useAuth();
-
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
@@ -23,13 +21,7 @@ export default function DeliveryLayout(): JSX.Element {
           </Link>
           <div className="flex items-center gap-3">
             <RealtimeIndicator />
-            <button
-              type="button"
-              onClick={logout}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-brand-teal hover:text-brand-teal"
-            >
-              Sign out
-            </button>
+            <SignOutButton />
           </div>
         </div>
       </header>

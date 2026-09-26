@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AuditListQuery, AuditListResultDto } from '@hungrybox/shared';
 import { ApiError, branchAuditApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
-import EmptyState from '../../features/storefront/components/EmptyState';
+import EmptyState from '../../components/EmptyState';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import ManagerLayout from './ManagerLayout';
 
