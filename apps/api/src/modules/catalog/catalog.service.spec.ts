@@ -16,9 +16,16 @@ function productRow(overrides: Record<string, unknown> = {}) {
     name: 'Special Chicken Biryani',
     slug: 'special-chicken-biryani',
     description: 'Served with raita',
-    category: { name: 'Biryani & Rice Meals', slug: 'biryani-and-rice' },
-    images: [{ imageUrl: 'https://cdn.example/1.jpg' }],
-    branchProducts: [{ priceMinor: 29900, discountMinor: 2000, isAvailable: true }],
+    category: { name: 'Biryani & Rice Meals', slug: 'biryani-and-rice', imageUrl: null },
+    images: [{ imageUrl: 'https://cdn.example/1.jpg', isPrimary: true, sortOrder: 0 }],
+    branchProducts: [
+      {
+        priceMinor: 29900,
+        discountMinor: 2000,
+        isAvailable: true,
+        images: [],
+      },
+    ],
     ...overrides,
   };
 }
@@ -108,6 +115,72 @@ describe('CatalogService.listProducts', () => {
 
     await expect(service.listProducts({ branchId: 'b1' })).rejects.toThrow(NotFoundException);
   });
+
+  it('prefers the branch image over the global product image', async () => {
+    const db = {
+      branch: { findUnique: vi.fn().mockResolvedValue({ id: 'b1', status: 'ACTIVE' }) },
+      product: {
+        findMany: vi.fn().mockResolvedValue([
+          productRow({
+            branchProducts: [
+              {
+                priceMinor: 29900,
+                discountMinor: 0,
+                isAvailable: true,
+                images: [
+                  {
+                    imageUrl: 'https://cdn.example/branch.jpg',
+                    isPrimary: true,
+                    sortOrder: 0,
+                  },
+                ],
+              },
+            ],
+          }),
+        ]),
+      },
+    };
+    const service = buildService(db);
+
+    const result = await service.listProducts({ branchId: 'b1' });
+
+    expect(result[0].imageUrl).toBe('https://cdn.example/branch.jpg');
+  });
+
+  it('falls back to the category image when neither branch nor product has media', async () => {
+    const db = {
+      branch: { findUnique: vi.fn().mockResolvedValue({ id: 'b1', status: 'ACTIVE' }) },
+      product: {
+        findMany: vi.fn().mockResolvedValue([
+          productRow({
+            images: [],
+            category: {
+              name: 'Shakes',
+              slug: 'shakes',
+              imageUrl: 'https://cdn.example/shakes.jpg',
+            },
+          }),
+        ]),
+      },
+    };
+    const service = buildService(db);
+
+    const result = await service.listProducts({ branchId: 'b1' });
+
+    expect(result[0].imageUrl).toBe('https://cdn.example/shakes.jpg');
+  });
+
+  it('returns a null image when nothing is available so the client can fall back', async () => {
+    const db = {
+      branch: { findUnique: vi.fn().mockResolvedValue({ id: 'b1', status: 'ACTIVE' }) },
+      product: { findMany: vi.fn().mockResolvedValue([productRow({ images: [] })]) },
+    };
+    const service = buildService(db);
+
+    const result = await service.listProducts({ branchId: 'b1' });
+
+    expect(result[0].imageUrl).toBeNull();
+  });
 });
 
 describe('CatalogService.getProductDetail', () => {
@@ -117,7 +190,12 @@ describe('CatalogService.getProductDetail', () => {
       name: 'Special Chicken Biryani',
       slug: 'special-chicken-biryani',
       description: 'Served with raita',
-      category: { id: 'cat-1', name: 'Biryani & Rice Meals', slug: 'biryani-and-rice' },
+      category: {
+        id: 'cat-1',
+        name: 'Biryani & Rice Meals',
+        slug: 'biryani-and-rice',
+        imageUrl: null,
+      },
       images: [
         {
           id: 'img-1',
@@ -134,7 +212,7 @@ describe('CatalogService.getProductDetail', () => {
           isPrimary: false,
         },
       ],
-      branchProducts: [{ priceMinor: 29900, discountMinor: 2000, isAvailable: true }],
+      branchProducts: [{ priceMinor: 29900, discountMinor: 2000, isAvailable: true, images: [] }],
       ...overrides,
     };
   }
@@ -168,7 +246,9 @@ describe('CatalogService.getProductDetail', () => {
       product: {
         findFirst: vi.fn().mockResolvedValue(
           detailRow({
-            branchProducts: [{ priceMinor: 22900, discountMinor: 0, isAvailable: false }],
+            branchProducts: [
+              { priceMinor: 22900, discountMinor: 0, isAvailable: false, images: [] },
+            ],
           }),
         ),
       },
@@ -245,6 +325,44 @@ describe('CatalogService.getProductDetail', () => {
     const service = buildService(db);
 
     await expect(service.getProductDetail('missing', 'b1')).rejects.toThrow(NotFoundException);
+  });
+
+  it('uses the branch primary image as the canonical detail image', async () => {
+    const db = {
+      branch: { findUnique: vi.fn().mockResolvedValue({ id: 'b1', status: 'ACTIVE' }) },
+      product: {
+        findFirst: vi.fn().mockResolvedValue(
+          detailRow({
+            branchProducts: [
+              {
+                priceMinor: 29900,
+                discountMinor: 0,
+                isAvailable: true,
+                images: [
+                  {
+                    id: 'bi-1',
+                    imageUrl: 'https://cdn.example/branch.jpg',
+                    altText: null,
+                    sortOrder: 0,
+                    isPrimary: true,
+                    providerPublicId: 'secret',
+                    resourceType: 'image',
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      },
+    };
+    const service = buildService(db);
+
+    const result = await service.getProductDetail('product-1', 'b1');
+
+    expect(result.imageUrl).toBe('https://cdn.example/branch.jpg');
+    // The gallery remains the global set, and branch media never leaks provider fields.
+    expect(result.images).toHaveLength(2);
+    expect(result.images[0]).not.toHaveProperty('providerPublicId');
   });
 });
 

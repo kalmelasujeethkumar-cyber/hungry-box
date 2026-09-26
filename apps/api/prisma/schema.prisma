@@ -231,10 +231,28 @@ model BranchProduct {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   cartItems     CartItem[]
+  images        BranchProductImage[]
 
   @@unique([branchId, productId])
   @@index([branchId, status])
   @@index([branchId, isAvailable])
+}
+
+/// Branch-owned presentation of a global Product. Order and primary selection are
+/// independent of ProductImage so global media can never be edited through a branch.
+model BranchProductImage {
+  id               String        @id @default(cuid())
+  branchProductId  String
+  branchProduct    BranchProduct @relation(fields: [branchProductId], references: [id], onDelete: Cascade)
+  imageUrl         String
+  providerPublicId String?
+  resourceType     String?
+  altText          String?
+  sortOrder        Int           @default(0)
+  isPrimary        Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+
+  @@index([branchProductId])
 }
 
 model Address {

@@ -46,6 +46,7 @@ import type {
   OrderStatus,
   OrderSummaryDto,
   PaymentIntentDto,
+  ReorderBranchProductImagesInput,
   ReorderProductImagesInput,
   ReviewPartnerDocumentInput,
   ServiceabilityResult,
@@ -454,6 +455,44 @@ export const branchProductsApi = {
     }),
   deactivate: (branchProductId: string, token: string) =>
     apiRequest<BranchProductDto>(`/branch-products/${branchProductId}`, {
+      method: 'DELETE',
+      token,
+    }),
+};
+
+/**
+ * Branch-owned product media. These endpoints only ever touch the branch product the
+ * server resolves from the path, so the client never sends a branchId.
+ */
+export const branchProductMediaApi = {
+  uploadImage: (
+    branchProductId: string,
+    file: File,
+    altText: string | undefined,
+    token: string,
+  ) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (altText) form.append('altText', altText);
+    return uploadRequest<BranchProductDto>(
+      `/branch-products/${branchProductId}/images`,
+      form,
+      token,
+    );
+  },
+  setPrimaryImage: (imageId: string, token: string) =>
+    apiRequest<BranchProductDto>(`/branch-products/images/${imageId}/primary`, {
+      method: 'PATCH',
+      token,
+    }),
+  reorderImages: (input: ReorderBranchProductImagesInput, token: string) =>
+    apiRequest<BranchProductDto>('/branch-products/images/reorder', {
+      method: 'PATCH',
+      body: input,
+      token,
+    }),
+  removeImage: (imageId: string, token: string) =>
+    apiRequest<BranchProductDto>(`/branch-products/images/${imageId}`, {
       method: 'DELETE',
       token,
     }),

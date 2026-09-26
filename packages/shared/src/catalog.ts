@@ -47,6 +47,15 @@ export interface CatalogProductDetail {
 
 export type BranchProductStatus = 'ACTIVE' | 'INACTIVE';
 
+/** Branch-owned product media. Never exposes provider storage identifiers. */
+export interface BranchProductImageDto {
+  id: string;
+  imageUrl: string;
+  altText: string | null;
+  sortOrder: number;
+  isPrimary: boolean;
+}
+
 export interface BranchProductDto {
   id: string;
   productId: string;
@@ -55,12 +64,22 @@ export interface BranchProductDto {
   effectivePriceMinor: number;
   isAvailable: boolean;
   status: BranchProductStatus;
+  /** Canonical image a customer sees: branch image, then global image, then category image. */
+  imageUrl: string | null;
+  /** Editable branch-owned images, ordered by sortOrder. */
+  branchImages: BranchProductImageDto[];
+  /** Global images are read-only for a branch and only here so fallbacks stay explainable. */
+  globalImages: ProductImageDto[];
   product: {
     name: string;
     slug: string;
     categoryName: string | null;
     categorySlug: string | null;
   };
+}
+
+export interface ReorderBranchProductImagesInput {
+  orderedImageIds: string[];
 }
 
 export interface UpdateBranchProductInput {

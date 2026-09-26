@@ -22,11 +22,12 @@ function cartWithItems(overrides: Record<string, unknown> = {}) {
         unitDiscountMinor: 2000,
         branchProduct: {
           id: 'bp1',
+          images: [],
           product: {
             id: 'p1',
             name: 'Special Chicken Biryani',
             slug: 'special-chicken-biryani',
-            category: { name: 'Biryani & Rice Meals' },
+            category: { name: 'Biryani & Rice Meals', imageUrl: null },
             images: [],
           },
         },
@@ -38,6 +39,7 @@ function cartWithItems(overrides: Record<string, unknown> = {}) {
         unitDiscountMinor: 500,
         branchProduct: {
           id: 'bp2',
+          images: [],
           product: {
             id: 'p2',
             name: 'Chicken 65 Roll',
@@ -128,6 +130,109 @@ describe('CartService.get', () => {
       itemCount: 0,
     });
     expect(result.branch.name).toBe('Hungry Box Guntur (Demo)');
+  });
+
+  it('shows the branch image on the cart line, matching the catalogue', async () => {
+    const db = baseDb();
+    db.cart.findUnique = vi.fn().mockResolvedValue(
+      cartWithItems({
+        items: [
+          {
+            id: 'i1',
+            quantity: 1,
+            unitPriceMinor: 29900,
+            unitDiscountMinor: 0,
+            branchProduct: {
+              id: 'bp1',
+              images: [
+                {
+                  imageUrl: 'https://cdn.test/branch-primary.jpg',
+                  isPrimary: true,
+                  sortOrder: 0,
+                },
+              ],
+              product: {
+                id: 'p1',
+                name: 'Special Chicken Biryani',
+                slug: 'special-chicken-biryani',
+                category: { name: 'Biryani', imageUrl: 'https://cdn.test/category.jpg' },
+                images: [
+                  {
+                    imageUrl: 'https://cdn.test/global-primary.jpg',
+                    isPrimary: true,
+                    sortOrder: 0,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      }),
+    );
+    const service = buildService(db);
+
+    const result = await service.get('cust-1', 'b1');
+
+    expect(result.items[0].imageUrl).toBe('https://cdn.test/branch-primary.jpg');
+  });
+
+  it('falls back through global then category images when a branch has none', async () => {
+    const db = baseDb();
+    db.cart.findUnique = vi.fn().mockResolvedValue(
+      cartWithItems({
+        items: [
+          {
+            id: 'i1',
+            quantity: 1,
+            unitPriceMinor: 29900,
+            unitDiscountMinor: 0,
+            branchProduct: {
+              id: 'bp1',
+              images: [],
+              product: {
+                id: 'p1',
+                name: 'Special Chicken Biryani',
+                slug: 'special-chicken-biryani',
+                category: { name: 'Biryani', imageUrl: 'https://cdn.test/category.jpg' },
+                images: [
+                  { imageUrl: 'https://cdn.test/global-1.jpg', isPrimary: false, sortOrder: 0 },
+                  { imageUrl: 'https://cdn.test/global-2.jpg', isPrimary: true, sortOrder: 1 },
+                ],
+              },
+            },
+          },
+        ],
+      }),
+    );
+    const service = buildService(db);
+    const withGlobal = await service.get('cust-1', 'b1');
+    expect(withGlobal.items[0].imageUrl).toBe('https://cdn.test/global-2.jpg');
+
+    db.cart.findUnique = vi.fn().mockResolvedValue(
+      cartWithItems({
+        items: [
+          {
+            id: 'i1',
+            quantity: 1,
+            unitPriceMinor: 29900,
+            unitDiscountMinor: 0,
+            branchProduct: {
+              id: 'bp1',
+              images: [],
+              product: {
+                id: 'p1',
+                name: 'Special Chicken Biryani',
+                slug: 'special-chicken-biryani',
+                category: { name: 'Biryani', imageUrl: 'https://cdn.test/category.jpg' },
+                images: [],
+              },
+            },
+          },
+        ],
+      }),
+    );
+    const withCategory = await service.get('cust-1', 'b1');
+    expect(withCategory.items[0].imageUrl).toBe('https://cdn.test/category.jpg');
   });
 
   it('rejects an inactive branch', async () => {

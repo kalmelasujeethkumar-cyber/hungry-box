@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
+import { BranchProductsController } from '../branch-products/branch-products.controller';
 import { CategoriesController } from '../categories/categories.controller';
 import { ProductsController } from '../products/products.controller';
 
@@ -47,6 +48,35 @@ describe('Public catalog media RBAC metadata', () => {
       expect(roles).not.toContain('BRANCH_MANAGER');
       expect(roles).not.toContain('DELIVERY_PARTNER');
       expect(roles).not.toContain('CUSTOMER');
+    });
+  });
+
+  describe('BranchProductsController branch-owned media endpoints', () => {
+    const branchMediaMethods = ['uploadImage', 'setPrimaryImage', 'reorderImages', 'removeImage'];
+
+    it('grants exactly SUPER_ADMIN and BRANCH_MANAGER', () => {
+      for (const method of branchMediaMethods) {
+        expect(methodRoles(BranchProductsController.prototype, method)).toEqual([
+          'SUPER_ADMIN',
+          'BRANCH_MANAGER',
+        ]);
+      }
+    });
+
+    it('never grants CUSTOMER or DELIVERY_PARTNER branch media access', () => {
+      for (const method of branchMediaMethods) {
+        const roles = methodRoles(BranchProductsController.prototype, method);
+        expect(roles).not.toContain('CUSTOMER');
+        expect(roles).not.toContain('DELIVERY_PARTNER');
+      }
+    });
+
+    it('does not widen any existing branch product endpoint to other roles', () => {
+      for (const method of ['list', 'create', 'update', 'remove']) {
+        const roles = methodRoles(BranchProductsController.prototype, method);
+        expect(roles).not.toContain('CUSTOMER');
+        expect(roles).not.toContain('DELIVERY_PARTNER');
+      }
     });
   });
 });

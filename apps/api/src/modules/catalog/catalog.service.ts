@@ -2,8 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { CatalogProduct, CatalogProductDetail } from '@hungrybox/shared';
 import { BranchProductStatus, BranchStatus, CatalogStatus } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveCatalogImageUrl } from '../../common/utils/catalog-image';
 import type { CategoryListItem } from '../categories/categories.service';
 import type { CatalogQueryDto } from './dto/catalog-query.dto';
+
+const catalogImageSelect = {
+  orderBy: { sortOrder: 'asc' },
+  select: { imageUrl: true, isPrimary: true, sortOrder: true },
+} as const;
 
 @Injectable()
 export class CatalogService {
@@ -39,12 +45,8 @@ export class CatalogService {
         name: true,
         slug: true,
         description: true,
-        category: { select: { name: true, slug: true } },
-        images: {
-          where: { isPrimary: true },
-          take: 1,
-          select: { imageUrl: true },
-        },
+        category: { select: { name: true, slug: true, imageUrl: true } },
+        images: catalogImageSelect,
         branchProducts: {
           where: {
             branchId: query.branchId,
@@ -56,6 +58,7 @@ export class CatalogService {
             priceMinor: true,
             discountMinor: true,
             isAvailable: true,
+            images: catalogImageSelect,
           },
         },
       },
@@ -75,7 +78,11 @@ export class CatalogService {
           description: product.description,
           categoryName: product.category?.name ?? null,
           categorySlug: product.category?.slug ?? null,
-          imageUrl: product.images[0]?.imageUrl ?? null,
+          imageUrl: resolveCatalogImageUrl({
+            branchImages: branchConfig.images,
+            globalImages: product.images,
+            categoryImageUrl: product.category?.imageUrl ?? null,
+          }),
           priceMinor: branchConfig.priceMinor,
           discountMinor: branchConfig.discountMinor,
           effectivePriceMinor: branchConfig.priceMinor - branchConfig.discountMinor,
@@ -96,7 +103,7 @@ export class CatalogService {
         name: true,
         slug: true,
         description: true,
-        category: { select: { id: true, name: true, slug: true } },
+        category: { select: { id: true, name: true, slug: true, imageUrl: true } },
         images: {
           orderBy: { sortOrder: 'asc' },
           select: {
@@ -110,7 +117,21 @@ export class CatalogService {
         branchProducts: {
           where: { branchId, status: BranchProductStatus.ACTIVE },
           take: 1,
-          select: { priceMinor: true, discountMinor: true, isAvailable: true },
+          select: {
+            priceMinor: true,
+            discountMinor: true,
+            isAvailable: true,
+            images: {
+              orderBy: { sortOrder: 'asc' },
+              select: {
+                id: true,
+                imageUrl: true,
+                altText: true,
+                sortOrder: true,
+                isPrimary: true,
+              },
+            },
+          },
         },
       },
     });
@@ -122,7 +143,17 @@ export class CatalogService {
       throw new NotFoundException('Product not available at this branch');
     }
 
-    const primaryImage = product.images.find((image) => image.isPrimary);
+    // `images` stays the global HQ gallery, which is the pre-existing public
+    // contract. The customer's own branch media is deliberately not merged into
+    // it: the storefront renders a single canonical image from `imageUrl`, so a
+    // branch image reaches the customer through that field alone.
+    const branchImages = branchConfig.images.map((image) => ({
+      id: image.id,
+      imageUrl: image.imageUrl,
+      altText: image.altText,
+      sortOrder: image.sortOrder,
+      isPrimary: image.isPrimary,
+    }));
     return {
       productId: product.id,
       name: product.name,
@@ -138,7 +169,11 @@ export class CatalogService {
         sortOrder: image.sortOrder,
         isPrimary: image.isPrimary,
       })),
-      imageUrl: primaryImage?.imageUrl ?? product.images[0]?.imageUrl ?? null,
+      imageUrl: resolveCatalogImageUrl({
+        branchImages,
+        globalImages: product.images,
+        categoryImageUrl: product.category?.imageUrl ?? null,
+      }),
       priceMinor: branchConfig.priceMinor,
       discountMinor: branchConfig.discountMinor,
       effectivePriceMinor: branchConfig.priceMinor - branchConfig.discountMinor,

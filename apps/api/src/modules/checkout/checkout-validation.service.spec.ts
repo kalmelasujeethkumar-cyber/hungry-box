@@ -63,12 +63,19 @@ function baseDb() {
           discountMinor: 2000,
           isAvailable: true,
           status: 'ACTIVE',
+          images: [],
           product: {
             id: 'p1',
             name: 'Special Chicken Biryani',
             status: 'ACTIVE',
-            category: { name: 'Biryani & Rice Meals' },
-            images: [{ imageUrl: 'https://img.hungrybox.test/biryani.jpg' }],
+            category: { name: 'Biryani & Rice Meals', imageUrl: null },
+            images: [
+              {
+                imageUrl: 'https://img.hungrybox.test/biryani.jpg',
+                isPrimary: true,
+                sortOrder: 0,
+              },
+            ],
           },
         },
         {
@@ -77,6 +84,7 @@ function baseDb() {
           discountMinor: 0,
           isAvailable: true,
           status: 'ACTIVE',
+          images: [],
           product: {
             id: 'p2',
             name: 'Chicken 65 Roll',
@@ -123,6 +131,49 @@ describe('CheckoutValidationService.resolve', () => {
     expect(result.priceChanges).toEqual([]);
   });
 
+  it('carries the branch image on the checkout line when the branch has one', async () => {
+    const db = baseDb();
+    db.branchProduct.findMany = vi.fn().mockResolvedValue([
+      {
+        id: 'bp1',
+        priceMinor: 29900,
+        discountMinor: 0,
+        isAvailable: true,
+        status: 'ACTIVE',
+        images: [
+          {
+            imageUrl: 'https://img.hungrybox.test/branch/biryani.jpg',
+            isPrimary: true,
+            sortOrder: 0,
+          },
+        ],
+        product: {
+          id: 'p1',
+          name: 'Special Chicken Biryani',
+          status: 'ACTIVE',
+          category: { name: 'Biryani & Rice Meals', imageUrl: null },
+          images: [
+            {
+              imageUrl: 'https://img.hungrybox.test/biryani.jpg',
+              isPrimary: true,
+              sortOrder: 0,
+            },
+          ],
+        },
+      },
+    ]);
+    db.cart.findFirst = vi.fn().mockResolvedValue({
+      id: 'cart-1',
+      branchId: 'b1',
+      items: [{ branchProductId: 'bp1', quantity: 1, unitPriceMinor: 29900, unitDiscountMinor: 0 }],
+    });
+    const service = buildService(db);
+
+    const result = await service.resolve('cust-1', 'a1');
+
+    expect(result.items[0].imageUrl).toBe('https://img.hungrybox.test/branch/biryani.jpg');
+  });
+
   it('detects a price change relative to the cart snapshot', async () => {
     const db = baseDb();
     db.cart.findFirst = vi.fn().mockResolvedValue({
@@ -152,6 +203,7 @@ describe('CheckoutValidationService.resolve', () => {
         discountMinor: 2000,
         isAvailable: false,
         status: 'ACTIVE',
+        images: [],
         product: {
           id: 'p1',
           name: 'Special Chicken Biryani',
@@ -166,6 +218,7 @@ describe('CheckoutValidationService.resolve', () => {
         discountMinor: 0,
         isAvailable: true,
         status: 'INACTIVE',
+        images: [],
         product: {
           id: 'p2',
           name: 'Chicken 65 Roll',
@@ -201,6 +254,7 @@ describe('CheckoutValidationService.resolve', () => {
         discountMinor: 2000,
         isAvailable: false,
         status: 'ACTIVE',
+        images: [],
         product: {
           id: 'p1',
           name: 'Special Chicken Biryani',

@@ -429,3 +429,169 @@ describe('admin catalogue category media', () => {
     expect(await screen.findByRole('img', { name: 'Biryani' })).toBeInTheDocument();
   });
 });
+
+describe('admin catalogue product creation with an image', () => {
+  function createdProduct(): GlobalProductDetailDto {
+    return {
+      ...productItem(),
+      id: 'p-2',
+      name: 'Masala Chai',
+      slug: 'masala-chai',
+      imageUrl: null,
+      images: [],
+    };
+  }
+
+  async function openAddDialog(user: ReturnType<typeof userEvent.setup>) {
+    render(
+      <MemoryRouter>
+        <AdminCataloguePage />
+      </MemoryRouter>,
+    );
+    await screen.findByText('Chicken Biryani');
+    await user.click(screen.getByRole('button', { name: 'Add product' }));
+    return screen.findByRole('dialog', { name: 'Add product' });
+  }
+
+  it('previews the chosen image inside the add dialog before the product exists', async () => {
+    const user = userEvent.setup();
+    const dialog = await openAddDialog(user);
+
+    expect(within(dialog).getByText('Product image (optional)')).toBeInTheDocument();
+    expect(within(dialog).queryByTestId('image-field-preview')).not.toBeInTheDocument();
+
+    await user.upload(within(dialog).getByLabelText('Choose new product image'), jpegFile());
+
+    expect(within(dialog).getByTestId('image-field-preview')).toBeInTheDocument();
+  });
+
+  it('creates the product and then uploads the staged image to it', async () => {
+    MOCK_APIS.productsApi.create.mockResolvedValue(createdProduct());
+    MOCK_APIS.productsApi.uploadImage.mockResolvedValue(createdProduct());
+    const user = userEvent.setup();
+    const dialog = await openAddDialog(user);
+
+    await user.type(within(dialog).getByLabelText('Name'), 'Masala Chai');
+    await user.upload(within(dialog).getByLabelText('Choose new product image'), jpegFile());
+    await user.click(within(dialog).getByRole('button', { name: 'Add product' }));
+
+    await waitFor(() => expect(MOCK_APIS.productsApi.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(MOCK_APIS.productsApi.uploadImage).toHaveBeenCalledWith(
+        'p-2',
+        expect.any(File),
+        undefined,
+        'test-token',
+      ),
+    );
+    expect(await screen.findByText('Product created with its image.')).toBeInTheDocument();
+  });
+
+  it('sends the image description when one is provided', async () => {
+    MOCK_APIS.productsApi.create.mockResolvedValue(createdProduct());
+    MOCK_APIS.productsApi.uploadImage.mockResolvedValue(createdProduct());
+    const user = userEvent.setup();
+    const dialog = await openAddDialog(user);
+
+    await user.type(within(dialog).getByLabelText('Name'), 'Masala Chai');
+    await user.upload(within(dialog).getByLabelText('Choose new product image'), jpegFile());
+    await user.type(
+      within(dialog).getByLabelText('Description for this image (optional)'),
+      'Hot masala chai',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Add product' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.productsApi.uploadImage).toHaveBeenCalledWith(
+        'p-2',
+        expect.any(File),
+        'Hot masala chai',
+        'test-token',
+      ),
+    );
+  });
+
+  it('creates the product without any API image call when no image is staged', async () => {
+    MOCK_APIS.productsApi.create.mockResolvedValue(createdProduct());
+    const user = userEvent.setup();
+    const dialog = await openAddDialog(user);
+
+    await user.type(within(dialog).getByLabelText('Name'), 'Masala Chai');
+    await user.click(within(dialog).getByRole('button', { name: 'Add product' }));
+
+    await waitFor(() => expect(MOCK_APIS.productsApi.create).toHaveBeenCalled());
+    expect(MOCK_APIS.productsApi.uploadImage).not.toHaveBeenCalled();
+  });
+
+  it('rejects a staged non-image before creating anything', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const dialog = await openAddDialog(user);
+
+    await user.type(within(dialog).getByLabelText('Name'), 'Masala Chai');
+    await user.upload(
+      within(dialog).getByLabelText('Choose new product image'),
+      new File(['<svg/>'], 'icon.svg', { type: 'image/svg+xml' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Add product' }));
+
+    expect(
+      await within(dialog).findByText('Choose a JPEG, PNG or WebP image.'),
+    ).toBeInTheDocument();
+    expect(MOCK_APIS.productsApi.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a staged oversized image before creating anything', async () => {
+    const user = userEvent.setup();
+    const dialog = await openAddDialog(user);
+
+    await user.type(within(dialog).getByLabelText('Name'), 'Masala Chai');
+    await user.upload(
+      within(dialog).getByLabelText('Choose new product image'),
+      new File([new Uint8Array(6 * 1024 * 1024)], 'big.png', { type: 'image/png' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Add product' }));
+
+    expect(await within(dialog).findByText('Image must be 5 MB or smaller.')).toBeInTheDocument();
+    expect(MOCK_APIS.productsApi.create).not.toHaveBeenCalled();
+  });
+
+  it('reports an honest partial success when the product is created but the image upload fails', async () => {
+    MOCK_APIS.productsApi.create.mockResolvedValue(createdProduct());
+    MOCK_APIS.productsApi.uploadImage.mockRejectedValue(
+      new MOCK_APIS.ApiError('Upload failed', 503),
+    );
+    const user = userEvent.setup();
+    const dialog = await openAddDialog(user);
+
+    await user.type(within(dialog).getByLabelText('Name'), 'Masala Chai');
+    await user.upload(within(dialog).getByLabelText('Choose new product image'), jpegFile());
+    await user.click(within(dialog).getByRole('button', { name: 'Add product' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.productsApi.uploadImage).toHaveBeenCalledWith(
+        'p-2',
+        expect.any(File),
+        undefined,
+        'test-token',
+      ),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /Product created, but its image was not uploaded/,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/Open the product to add the image again/);
+  });
+
+  it('closes and resets the add dialog after a successful create', async () => {
+    MOCK_APIS.productsApi.create.mockResolvedValue(createdProduct());
+    const user = userEvent.setup();
+    const dialog = await openAddDialog(user);
+
+    await user.type(within(dialog).getByLabelText('Name'), 'Masala Chai');
+    await user.upload(within(dialog).getByLabelText('Choose new product image'), jpegFile());
+    await user.click(within(dialog).getByRole('button', { name: 'Add product' }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Add product' })).not.toBeInTheDocument(),
+    );
+  });
+});

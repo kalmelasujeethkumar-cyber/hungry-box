@@ -10,6 +10,7 @@ import {
 } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { requireActiveUser } from '../../common/utils/active-user';
+import { resolveCatalogImageUrl } from '../../common/utils/catalog-image';
 import { haversineKm } from '../locations/geo';
 import { DefaultDeliveryFeePolicy } from './delivery-fee.policy';
 
@@ -163,13 +164,16 @@ export class CheckoutValidationService {
             id: true,
             name: true,
             status: true,
-            category: { select: { name: true } },
+            category: { select: { name: true, imageUrl: true } },
             images: {
-              where: { isPrimary: true },
-              take: 1,
-              select: { imageUrl: true },
+              orderBy: { sortOrder: 'asc' },
+              select: { imageUrl: true, isPrimary: true, sortOrder: true },
             },
           },
+        },
+        images: {
+          orderBy: { sortOrder: 'asc' },
+          select: { imageUrl: true, isPrimary: true, sortOrder: true },
         },
       },
     });
@@ -227,7 +231,11 @@ export class CheckoutValidationService {
         productId,
         productName,
         categoryName: branchProduct!.product.category?.name ?? null,
-        imageUrl: branchProduct!.product.images[0]?.imageUrl ?? null,
+        imageUrl: resolveCatalogImageUrl({
+          branchImages: branchProduct!.images,
+          globalImages: branchProduct!.product.images,
+          categoryImageUrl: branchProduct!.product.category?.imageUrl ?? null,
+        }),
         quantity,
         unitPriceMinor,
         unitDiscountMinor,

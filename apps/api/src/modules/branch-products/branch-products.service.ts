@@ -5,23 +5,22 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { BranchProductDto, UserRole } from '@hungrybox/shared';
+import type { BranchProductDto } from '@hungrybox/shared';
 import {
   BranchProductStatus,
   BranchStatus,
   CatalogStatus,
   Prisma,
 } from '../../generated/prisma/client';
+import type { PrismaClient } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveCatalogImageUrl } from '../../common/utils/catalog-image';
 import { AuditKinds, AuditService } from '../audit/audit.service';
+import { BranchScopedActor, enforcedBranchId } from './branch-scope';
 import { CreateBranchProductDto } from './dto/create-branch-product.dto';
 import { UpdateBranchProductDto } from './dto/update-branch-product.dto';
 
-export interface BranchProductActor {
-  role: UserRole;
-  branchId: string | null;
-  userId: string;
-}
+export type BranchProductActor = BranchScopedActor;
 
 const branchProductSelect = {
   id: true,
@@ -35,11 +34,27 @@ const branchProductSelect = {
       name: true,
       slug: true,
       category: {
-        select: { name: true, slug: true },
+        select: { name: true, slug: true, imageUrl: true },
+      },
+      images: {
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, imageUrl: true, altText: true, sortOrder: true, isPrimary: true },
       },
     },
   },
+  images: {
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true, imageUrl: true, altText: true, sortOrder: true, isPrimary: true },
+  },
 } as const;
+
+type BranchProductImageRow = {
+  id: string;
+  imageUrl: string;
+  altText: string | null;
+  sortOrder: number;
+  isPrimary: boolean;
+};
 
 type BranchProductRow = {
   id: string;
@@ -51,8 +66,10 @@ type BranchProductRow = {
   product: {
     name: string;
     slug: string;
-    category: { name: string; slug: string } | null;
+    category: { name: string; slug: string; imageUrl: string | null } | null;
+    images: BranchProductImageRow[];
   };
+  images: BranchProductImageRow[];
 };
 
 @Injectable()
@@ -142,7 +159,7 @@ export class BranchProductsService {
     dto: UpdateBranchProductDto,
   ): Promise<BranchProductDto> {
     const db = this.prisma.requireClient();
-    const enforcedBranchId = this.enforcedBranchId(actor);
+    const scopeBranchId = enforcedBranchId(actor);
     const existing = await db.branchProduct.findUnique({
       where: { id: branchProductId },
       select: {
@@ -153,7 +170,7 @@ export class BranchProductsService {
         product: { select: { name: true } },
       },
     });
-    if (!existing || (enforcedBranchId !== null && existing.branchId !== enforcedBranchId)) {
+    if (!existing || (scopeBranchId !== null && existing.branchId !== scopeBranchId)) {
       throw new NotFoundException('Branch product not found');
     }
 
@@ -192,12 +209,12 @@ export class BranchProductsService {
 
   async remove(actor: BranchProductActor, branchProductId: string): Promise<BranchProductDto> {
     const db = this.prisma.requireClient();
-    const enforcedBranchId = this.enforcedBranchId(actor);
+    const scopeBranchId = enforcedBranchId(actor);
     const existing = await db.branchProduct.findUnique({
       where: { id: branchProductId },
       select: { id: true, branchId: true, product: { select: { name: true } } },
     });
-    if (!existing || (enforcedBranchId !== null && existing.branchId !== enforcedBranchId)) {
+    if (!existing || (scopeBranchId !== null && existing.branchId !== scopeBranchId)) {
       throw new NotFoundException('Branch product not found');
     }
 
@@ -236,24 +253,55 @@ export class BranchProductsService {
     return this.toItem(row);
   }
 
+  /**
+   * Reads a branch product inside the actor's authoritative branch scope. Used by
+   * branch media flows so a foreign branch product resolves as not found rather
+   * than leaking its existence.
+   */
+  async getForActor(actor: BranchProductActor, branchProductId: string): Promise<BranchProductDto> {
+    const db = this.prisma.requireClient();
+    await this.requireOwnedBranchProduct(db, actor, branchProductId);
+    return this.getById(branchProductId);
+  }
+
+  private async requireOwnedBranchProduct(
+    db: PrismaClient,
+    actor: BranchProductActor,
+    branchProductId: string,
+  ): Promise<{ id: string; branchId: string }> {
+    const scopeBranchId = enforcedBranchId(actor);
+    const existing = await db.branchProduct.findUnique({
+      where: { id: branchProductId },
+      select: { id: true, branchId: true },
+    });
+    if (!existing || (scopeBranchId !== null && existing.branchId !== scopeBranchId)) {
+      throw new NotFoundException('Branch product not found');
+    }
+    return existing;
+  }
+
   private assertBranchManaged(actor: BranchProductActor, branchId: string): void {
-    const enforcedBranchId = this.enforcedBranchId(actor);
-    if (enforcedBranchId !== null && enforcedBranchId !== branchId) {
+    const scopeBranchId = enforcedBranchId(actor);
+    if (scopeBranchId !== null && scopeBranchId !== branchId) {
       throw new ForbiddenException('Cannot configure products for another branch');
     }
   }
 
-  private enforcedBranchId(actor: BranchProductActor): string | null {
-    if (actor.role === 'BRANCH_MANAGER') {
-      if (!actor.branchId) {
-        throw new ForbiddenException('Branch manager has no assigned branch');
-      }
-      return actor.branchId;
-    }
-    return null;
-  }
-
   private toItem(row: BranchProductRow): BranchProductDto {
+    const branchImages = row.images.map((image) => ({
+      id: image.id,
+      imageUrl: image.imageUrl,
+      altText: image.altText,
+      sortOrder: image.sortOrder,
+      isPrimary: image.isPrimary,
+    }));
+    const globalImages = row.product.images.map((image) => ({
+      id: image.id,
+      imageUrl: image.imageUrl,
+      altText: image.altText,
+      sortOrder: image.sortOrder,
+      isPrimary: image.isPrimary,
+    }));
     return {
       id: row.id,
       productId: row.productId,
@@ -262,6 +310,13 @@ export class BranchProductsService {
       effectivePriceMinor: row.priceMinor - row.discountMinor,
       isAvailable: row.isAvailable,
       status: row.status,
+      imageUrl: resolveCatalogImageUrl({
+        branchImages,
+        globalImages,
+        categoryImageUrl: row.product.category?.imageUrl ?? null,
+      }),
+      branchImages,
+      globalImages,
       product: {
         name: row.product.name,
         slug: row.product.slug,

@@ -1,5 +1,12 @@
 import type { CartBranch, CartItemDto, CartSummary } from '@hungrybox/shared';
 import type { Prisma } from '../../generated/prisma/client';
+import { resolveCatalogImageUrl } from '../../common/utils/catalog-image';
+
+const catalogImageFields = {
+  imageUrl: true,
+  isPrimary: true,
+  sortOrder: true,
+} as const;
 
 export const cartWithItemsSelect = {
   id: true,
@@ -14,17 +21,14 @@ export const cartWithItemsSelect = {
       branchProduct: {
         select: {
           id: true,
+          images: { orderBy: { sortOrder: 'asc' }, select: catalogImageFields },
           product: {
             select: {
               id: true,
               name: true,
               slug: true,
-              category: { select: { name: true } },
-              images: {
-                where: { isPrimary: true },
-                take: 1,
-                select: { imageUrl: true },
-              },
+              category: { select: { name: true, imageUrl: true } },
+              images: { orderBy: { sortOrder: 'asc' }, select: catalogImageFields },
             },
           },
         },
@@ -85,7 +89,11 @@ export function toCartItemDto(item: CartItemWithProduct): CartItemDto {
     productName: item.branchProduct.product.name,
     productSlug: item.branchProduct.product.slug,
     categoryName: item.branchProduct.product.category?.name ?? null,
-    imageUrl: item.branchProduct.product.images[0]?.imageUrl ?? null,
+    imageUrl: resolveCatalogImageUrl({
+      branchImages: item.branchProduct.images,
+      globalImages: item.branchProduct.product.images,
+      categoryImageUrl: item.branchProduct.product.category?.imageUrl ?? null,
+    }),
     unitPriceMinor: item.unitPriceMinor,
     unitDiscountMinor: item.unitDiscountMinor,
     unitEffectivePriceMinor,

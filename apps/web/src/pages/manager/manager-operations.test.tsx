@@ -6,6 +6,7 @@ import type {
   AuditListResultDto,
   BranchDto,
   BranchProductDto,
+  BranchProductImageDto,
   OrderDetailDto,
   OrderSummaryDto,
 } from '@hungrybox/shared';
@@ -40,6 +41,12 @@ const MOCK_APIS = vi.hoisted(() => ({
     collectCod: vi.fn(),
   },
   branchProductsApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), deactivate: vi.fn() },
+  branchProductMediaApi: {
+    uploadImage: vi.fn(),
+    setPrimaryImage: vi.fn(),
+    reorderImages: vi.fn(),
+    removeImage: vi.fn(),
+  },
   branchSettingsApi: { get: vi.fn(), update: vi.fn() },
   branchAuditApi: { list: vi.fn(), exportCsv: vi.fn() },
   ApiError: class ApiError extends Error {
@@ -156,6 +163,10 @@ function orderDetail(overrides: Partial<OrderDetailDto> = {}): OrderDetailDto {
   };
 }
 
+function jpegFile(name = 'branch.jpg'): File {
+  return new File([new Uint8Array(64)], name, { type: 'image/jpeg' });
+}
+
 function branchProduct(overrides: Partial<BranchProductDto> = {}): BranchProductDto {
   return {
     id: 'bp-1',
@@ -165,6 +176,9 @@ function branchProduct(overrides: Partial<BranchProductDto> = {}): BranchProduct
     effectivePriceMinor: 27900,
     isAvailable: true,
     status: 'ACTIVE',
+    imageUrl: null,
+    branchImages: [],
+    globalImages: [],
     product: {
       name: 'Chicken Biryani',
       slug: 'chicken-biryani',
@@ -473,6 +487,272 @@ describe('manager catalogue', () => {
     expect(screen.queryByRole('button', { name: 'Make primary' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Move up|Move down/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove image' })).not.toBeInTheDocument();
+  });
+});
+
+describe('manager branch images', () => {
+  const BRANCH_IMAGE_URL =
+    'https://res.cloudinary.com/hungrybox/image/upload/v1/hungry-box/catalog/branches/br-guntur/products/bp-1/a.jpg';
+  const GLOBAL_IMAGE_URL =
+    'https://res.cloudinary.com/hungrybox/image/upload/v1/hungry-box/catalog/products/p-1/g.jpg';
+
+  function branchImage(overrides: Partial<BranchProductImageDto> = {}): BranchProductImageDto {
+    return {
+      id: 'bpi-1',
+      imageUrl: BRANCH_IMAGE_URL,
+      altText: 'Biryani in a bowl',
+      sortOrder: 0,
+      isPrimary: true,
+      ...overrides,
+    };
+  }
+
+  async function openBranchEdit(
+    product: BranchProductDto,
+  ): Promise<ReturnType<typeof userEvent.setup>> {
+    const user = userEvent.setup();
+    MOCK_APIS.branchProductsApi.list.mockResolvedValue([product]);
+    render(
+      <MemoryRouter>
+        <ManagerCatalogPage />
+      </MemoryRouter>,
+    );
+    await screen.findByText('Chicken Biryani');
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await screen.findByRole('dialog');
+    return user;
+  }
+
+  it('previews the chosen branch image before uploading it', async () => {
+    const user = await openBranchEdit(branchProduct());
+    const dialog = screen.getByRole('dialog');
+
+    expect(within(dialog).queryByTestId('image-field-preview')).not.toBeInTheDocument();
+
+    await user.upload(within(dialog).getByLabelText('Choose branch image'), jpegFile());
+
+    expect(within(dialog).getByTestId('image-field-preview')).toBeInTheDocument();
+    expect(MOCK_APIS.branchProductMediaApi.uploadImage).not.toHaveBeenCalled();
+  });
+
+  it('uploads a branch image with its description against the branch product id only', async () => {
+    MOCK_APIS.branchProductMediaApi.uploadImage.mockResolvedValue(
+      branchProduct({ branchImages: [branchImage()], imageUrl: BRANCH_IMAGE_URL }),
+    );
+    const user = await openBranchEdit(branchProduct());
+    const dialog = screen.getByRole('dialog');
+
+    await user.upload(within(dialog).getByLabelText('Choose branch image'), jpegFile());
+    await user.type(
+      within(dialog).getByLabelText('Description for this image (optional)'),
+      'Fresh biryani',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Upload branch image' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.branchProductMediaApi.uploadImage).toHaveBeenCalledWith(
+        'bp-1',
+        expect.any(File),
+        'Fresh biryani',
+        'test-token',
+      ),
+    );
+    expect(
+      await within(dialog).findByText('1 of 3 branch images — JPEG, PNG or WebP, up to 5 MB'),
+    ).toBeInTheDocument();
+  });
+
+  it('rejects a branch image that is not a JPEG, PNG or WebP file', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    MOCK_APIS.branchProductsApi.list.mockResolvedValue([branchProduct()]);
+    render(
+      <MemoryRouter>
+        <ManagerCatalogPage />
+      </MemoryRouter>,
+    );
+    await screen.findByText('Chicken Biryani');
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog');
+
+    await user.upload(
+      within(dialog).getByLabelText('Choose branch image'),
+      new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Upload branch image' }));
+
+    expect(
+      await within(dialog).findByText('Choose a JPEG, PNG or WebP image.'),
+    ).toBeInTheDocument();
+    expect(MOCK_APIS.branchProductMediaApi.uploadImage).not.toHaveBeenCalled();
+  });
+
+  it('promotes a branch image to primary and shows it to customers', async () => {
+    MOCK_APIS.branchProductMediaApi.setPrimaryImage.mockResolvedValue(
+      branchProduct({
+        branchImages: [
+          branchImage({ id: 'bpi-2', isPrimary: true, sortOrder: 0 }),
+          branchImage({ id: 'bpi-1', isPrimary: false, sortOrder: 1 }),
+        ],
+        imageUrl: BRANCH_IMAGE_URL,
+      }),
+    );
+    const user = await openBranchEdit(
+      branchProduct({
+        branchImages: [
+          branchImage({ id: 'bpi-1', isPrimary: true, sortOrder: 0 }),
+          branchImage({ id: 'bpi-2', isPrimary: false, sortOrder: 1 }),
+        ],
+      }),
+    );
+    const dialog = screen.getByRole('dialog');
+
+    expect(within(dialog).getAllByText('Shown to customers')).toHaveLength(1);
+    await user.click(within(dialog).getByRole('button', { name: 'Set as branch primary' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.branchProductMediaApi.setPrimaryImage).toHaveBeenCalledWith(
+        'bpi-2',
+        'test-token',
+      ),
+    );
+  });
+
+  it('reorders branch images by sending the full new order', async () => {
+    MOCK_APIS.branchProductMediaApi.reorderImages.mockResolvedValue(
+      branchProduct({
+        branchImages: [
+          branchImage({ id: 'bpi-2', isPrimary: true, sortOrder: 0 }),
+          branchImage({ id: 'bpi-1', isPrimary: false, sortOrder: 1 }),
+        ],
+      }),
+    );
+    const user = await openBranchEdit(
+      branchProduct({
+        branchImages: [
+          branchImage({ id: 'bpi-1', isPrimary: true, sortOrder: 0 }),
+          branchImage({ id: 'bpi-2', isPrimary: false, sortOrder: 1 }),
+        ],
+      }),
+    );
+    const dialog = screen.getByRole('dialog');
+
+    await user.click(within(dialog).getAllByRole('button', { name: 'Move image down' })[0]);
+
+    await waitFor(() =>
+      expect(MOCK_APIS.branchProductMediaApi.reorderImages).toHaveBeenCalledWith(
+        { orderedImageIds: ['bpi-2', 'bpi-1'] },
+        'test-token',
+      ),
+    );
+  });
+
+  it('removes a branch image only after confirmation', async () => {
+    MOCK_APIS.branchProductMediaApi.removeImage.mockResolvedValue(
+      branchProduct({ branchImages: [], imageUrl: GLOBAL_IMAGE_URL }),
+    );
+    const user = await openBranchEdit(branchProduct({ branchImages: [branchImage()] }));
+    const dialog = screen.getByRole('dialog');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    expect(MOCK_APIS.branchProductMediaApi.removeImage).not.toHaveBeenCalled();
+
+    const confirm = await screen.findByRole('dialog', { name: 'Remove this branch image?' });
+    await user.click(within(confirm).getByRole('button', { name: 'Remove branch image' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.branchProductMediaApi.removeImage).toHaveBeenCalledWith(
+        'bpi-1',
+        'test-token',
+      ),
+    );
+    expect(
+      await within(dialog).findByText('No branch images yet, so the Hungry Box image is used.'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the branch image on the product card and the global image as read-only reference', async () => {
+    MOCK_APIS.branchProductsApi.list.mockResolvedValue([
+      branchProduct({
+        imageUrl: BRANCH_IMAGE_URL,
+        branchImages: [branchImage()],
+        globalImages: [
+          {
+            id: 'img-1',
+            imageUrl: GLOBAL_IMAGE_URL,
+            altText: 'Biryani',
+            sortOrder: 0,
+            isPrimary: true,
+          },
+        ],
+      }),
+    ]);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ManagerCatalogPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('img', { name: 'Chicken Biryani' })).toHaveAttribute(
+      'src',
+      BRANCH_IMAGE_URL,
+    );
+    expect(screen.getByText('1 branch image')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog');
+
+    const hqSection = within(dialog).getByRole('region', { name: 'Images from Hungry Box HQ' });
+    expect(within(hqSection).getByRole('img', { name: 'Biryani' })).toBeInTheDocument();
+    expect(within(hqSection).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the global Hungry Box image when a branch has no branch image', async () => {
+    MOCK_APIS.branchProductsApi.list.mockResolvedValue([
+      branchProduct({
+        imageUrl: GLOBAL_IMAGE_URL,
+        branchImages: [],
+        globalImages: [
+          {
+            id: 'img-1',
+            imageUrl: GLOBAL_IMAGE_URL,
+            altText: 'Biryani',
+            sortOrder: 0,
+            isPrimary: true,
+          },
+        ],
+      }),
+    ]);
+    render(
+      <MemoryRouter>
+        <ManagerCatalogPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('img', { name: 'Chicken Biryani' })).toHaveAttribute(
+      'src',
+      GLOBAL_IMAGE_URL,
+    );
+    expect(screen.getByText('Using the Hungry Box image')).toBeInTheDocument();
+  });
+
+  it('stops offering new branch images once the limit is reached', async () => {
+    await openBranchEdit(
+      branchProduct({
+        branchImages: [
+          branchImage({ id: 'bpi-1', sortOrder: 0 }),
+          branchImage({ id: 'bpi-2', sortOrder: 1 }),
+          branchImage({ id: 'bpi-3', sortOrder: 2 }),
+        ],
+      }),
+    );
+    const dialog = screen.getByRole('dialog');
+
+    expect(within(dialog).getByText('Maximum of 3 branch images reached.')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Choose branch image')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: 'Upload branch image' }),
+    ).not.toBeInTheDocument();
   });
 });
 

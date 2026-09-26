@@ -21,7 +21,7 @@ function buildService<T extends Record<string, unknown>>(db: T) {
   return { service, db, audit };
 }
 
-function row() {
+function row(overrides: Record<string, unknown> = {}) {
   return {
     id: 'bp-1',
     productId: 'product-1',
@@ -32,8 +32,11 @@ function row() {
     product: {
       name: 'Special Chicken Biryani',
       slug: 'special-chicken-biryani',
-      category: { name: 'Biryani & Rice Meals', slug: 'biryani-and-rice' },
+      category: { name: 'Biryani & Rice Meals', slug: 'biryani-and-rice', imageUrl: null },
+      images: [],
     },
+    images: [],
+    ...overrides,
   };
 }
 
@@ -152,7 +155,7 @@ describe('BranchProductsService.listForBranch', () => {
         findMany: vi
           .fn()
           .mockResolvedValue([
-            { ...row(), product: { name: 'Roll', slug: 'roll', category: null } },
+            row({ product: { name: 'Roll', slug: 'roll', category: null, images: [] } }),
           ]),
       },
     };
@@ -170,6 +173,164 @@ describe('BranchProductsService.listForBranch', () => {
     const service = buildService(db).service;
 
     await expect(service.listForBranch('missing')).rejects.toThrow('Branch not found');
+  });
+});
+
+describe('BranchProductsService image resolution', () => {
+  it('prefers a branch image and exposes both image sets', async () => {
+    const db = {
+      branch: { findUnique: vi.fn().mockResolvedValue({ id: 'b1' }) },
+      branchProduct: {
+        findMany: vi.fn().mockResolvedValue([
+          row({
+            images: [
+              {
+                id: 'bi-1',
+                imageUrl: 'https://cdn.example/branch.jpg',
+                altText: null,
+                sortOrder: 0,
+                isPrimary: true,
+              },
+            ],
+            product: {
+              name: 'Masala Chai',
+              slug: 'masala-chai',
+              category: {
+                name: 'Shakes',
+                slug: 'shakes',
+                imageUrl: 'https://cdn.example/shakes.jpg',
+              },
+              images: [
+                {
+                  id: 'gi-1',
+                  imageUrl: 'https://cdn.example/global.jpg',
+                  altText: null,
+                  sortOrder: 0,
+                  isPrimary: true,
+                },
+              ],
+            },
+          }),
+        ]),
+      },
+    };
+    const service = buildService(db).service;
+
+    const result = await service.listForBranch('b1');
+
+    expect(result[0].imageUrl).toBe('https://cdn.example/branch.jpg');
+    expect(result[0].branchImages).toHaveLength(1);
+    expect(result[0].globalImages).toHaveLength(1);
+  });
+
+  it('falls back to the global image, then the category image', async () => {
+    const withGlobal = buildService({
+      branch: { findUnique: vi.fn().mockResolvedValue({ id: 'b1' }) },
+      branchProduct: {
+        findMany: vi.fn().mockResolvedValue([
+          row({
+            product: {
+              name: 'Masala Chai',
+              slug: 'masala-chai',
+              category: {
+                name: 'Shakes',
+                slug: 'shakes',
+                imageUrl: 'https://cdn.example/shakes.jpg',
+              },
+              images: [
+                {
+                  id: 'gi-1',
+                  imageUrl: 'https://cdn.example/global.jpg',
+                  altText: null,
+                  sortOrder: 0,
+                  isPrimary: true,
+                },
+              ],
+            },
+          }),
+        ]),
+      },
+    }).service;
+    const withCategory = buildService({
+      branch: { findUnique: vi.fn().mockResolvedValue({ id: 'b1' }) },
+      branchProduct: {
+        findMany: vi.fn().mockResolvedValue([
+          row({
+            product: {
+              name: 'Masala Chai',
+              slug: 'masala-chai',
+              category: {
+                name: 'Shakes',
+                slug: 'shakes',
+                imageUrl: 'https://cdn.example/shakes.jpg',
+              },
+              images: [],
+            },
+          }),
+        ]),
+      },
+    }).service;
+
+    expect((await withGlobal.listForBranch('b1'))[0].imageUrl).toBe(
+      'https://cdn.example/global.jpg',
+    );
+    expect((await withCategory.listForBranch('b1'))[0].imageUrl).toBe(
+      'https://cdn.example/shakes.jpg',
+    );
+  });
+
+  it('never leaks provider storage identifiers to a manager', async () => {
+    const db = {
+      branch: { findUnique: vi.fn().mockResolvedValue({ id: 'b1' }) },
+      branchProduct: {
+        findMany: vi.fn().mockResolvedValue([
+          row({
+            images: [
+              {
+                id: 'bi-1',
+                imageUrl: 'https://cdn.example/branch.jpg',
+                altText: null,
+                sortOrder: 0,
+                isPrimary: true,
+                providerPublicId: 'secret',
+                resourceType: 'image',
+              },
+            ],
+          }),
+        ]),
+      },
+    };
+    const service = buildService(db).service;
+
+    const result = await service.listForBranch('b1');
+
+    expect(result[0].branchImages[0]).not.toHaveProperty('providerPublicId');
+    expect(result[0].branchImages[0]).not.toHaveProperty('resourceType');
+  });
+});
+
+describe('BranchProductsService.getForActor', () => {
+  it('returns a branch product inside the actor scope', async () => {
+    const db = {
+      branchProduct: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ id: 'bp-1', branchId: 'b1' })
+          .mockResolvedValueOnce(row()),
+      },
+    };
+    const service = buildService(db).service;
+
+    await expect(service.getForActor(MANAGER, 'bp-1')).resolves.toMatchObject({ id: 'bp-1' });
+  });
+
+  it('hides a branch product that belongs to another branch', async () => {
+    const db = {
+      branchProduct: { findUnique: vi.fn().mockResolvedValue({ id: 'bp-2', branchId: 'b2' }) },
+    };
+    const service = buildService(db).service;
+
+    await expect(service.getForActor(MANAGER, 'bp-2')).rejects.toThrow(NotFoundException);
   });
 });
 

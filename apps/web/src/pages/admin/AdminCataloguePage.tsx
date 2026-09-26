@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type {
   CatalogStatus,
   CategoryDto,
@@ -12,6 +12,7 @@ import { useAuth } from '../../auth/auth-context';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { FilterChips } from '../../components/FilterChips';
+import { ImageField, imageFileError } from '../../components/ImageField';
 import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -36,18 +37,6 @@ function slugify(value: string): string {
 }
 
 const MAX_PRODUCT_IMAGES = 3;
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-
-function imageFileError(file: File): string | null {
-  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-    return 'Choose a JPEG, PNG or WebP image.';
-  }
-  if (file.size > MAX_IMAGE_BYTES) {
-    return 'Image must be 5 MB or smaller.';
-  }
-  return null;
-}
 
 const CATALOGUE_VIEWS = [
   { value: 'products', label: 'Products' },
@@ -77,6 +66,8 @@ export default function AdminCataloguePage(): JSX.Element {
     description: '',
     categoryId: '',
   });
+  const [addImageFile, setAddImageFile] = useState<File | null>(null);
+  const [addImageAlt, setAddImageAlt] = useState('');
 
   const [editing, setEditing] = useState<GlobalProductListItemDto | null>(null);
   const [detail, setDetail] = useState<GlobalProductDetailDto | null>(null);
@@ -91,12 +82,10 @@ export default function AdminCataloguePage(): JSX.Element {
   const [imageAlt, setImageAlt] = useState('');
   const [imageBusy, setImageBusy] = useState(false);
   const [removeImage, setRemoveImage] = useState<ProductImageDto | null>(null);
-  const imageFileInputRef = useRef<HTMLInputElement>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   const [categoryImageFile, setCategoryImageFile] = useState<File | null>(null);
   const [categoryImageBusy, setCategoryImageBusy] = useState(false);
-  const categoryFileInputRef = useRef<HTMLInputElement>(null);
 
   const [toggleProduct, setToggleProduct] = useState<GlobalProductListItemDto | null>(null);
 
@@ -150,9 +139,18 @@ export default function AdminCataloguePage(): JSX.Element {
 
   const openAdd = (): void => {
     setAddForm({ name: '', slug: '', description: '', categoryId: '' });
+    setAddImageFile(null);
+    setAddImageAlt('');
     setError(null);
     setSuccess(null);
     setAddOpen(true);
+  };
+
+  const closeAdd = (): void => {
+    setAddOpen(false);
+    setAddForm({ name: '', slug: '', description: '', categoryId: '' });
+    setAddImageFile(null);
+    setAddImageAlt('');
   };
 
   const handleAddName = (name: string): void => {
@@ -163,7 +161,7 @@ export default function AdminCataloguePage(): JSX.Element {
     });
   };
 
-  const submitAdd = (): void => {
+  const submitAdd = async (): Promise<void> => {
     if (!token) return;
     const name = addForm.name.trim();
     const slug = addForm.slug.trim();
@@ -175,10 +173,17 @@ export default function AdminCataloguePage(): JSX.Element {
       setError('Product slug is required.');
       return;
     }
+    if (addImageFile) {
+      const stagedError = imageFileError(addImageFile);
+      if (stagedError) {
+        setError(stagedError);
+        return;
+      }
+    }
     setSaving(true);
     setError(null);
-    productsApi
-      .create(
+    try {
+      const created = await productsApi.create(
         {
           name,
           slug,
@@ -186,16 +191,41 @@ export default function AdminCataloguePage(): JSX.Element {
           categoryId: addForm.categoryId || undefined,
         },
         token,
-      )
-      .then(() => {
-        setAddOpen(false);
+      );
+      if (!addImageFile) {
+        closeAdd();
         setSuccess('Product created.');
         refreshProducts();
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'Could not create the product.');
-      })
-      .finally(() => setSaving(false));
+        return;
+      }
+      try {
+        await productsApi.uploadImage(
+          created.id,
+          addImageFile,
+          addImageAlt.trim() || undefined,
+          token,
+        );
+      } catch (uploadError) {
+        closeAdd();
+        refreshProducts();
+        // The product row already exists, so this is reported as an honest partial
+        // success instead of a failure that would suggest nothing was created. It is
+        // set after refreshProducts because refreshing the catalogue clears errors.
+        setError(
+          `Product created, but its image was not uploaded (${
+            uploadError instanceof Error ? uploadError.message : 'unknown error'
+          }). Open the product to add the image again.`,
+        );
+        return;
+      }
+      closeAdd();
+      setSuccess('Product created with its image.');
+      refreshProducts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create the product.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openEdit = (product: GlobalProductListItemDto): void => {
@@ -705,7 +735,7 @@ export default function AdminCataloguePage(): JSX.Element {
           open={addOpen}
           title="Add product"
           onClose={() => {
-            if (!saving) setAddOpen(false);
+            if (!saving) closeAdd();
           }}
           closeOnBackdrop={false}
           className="max-w-lg"
@@ -757,16 +787,44 @@ export default function AdminCataloguePage(): JSX.Element {
               </select>
             </label>
           </div>
+          <fieldset className="mt-4 border-t border-slate-200 pt-4">
+            <legend className="text-sm font-bold text-brand-navy">Product image (optional)</legend>
+            <p className="mt-1 text-xs text-slate-500">
+              Choose an image now and it is uploaded as soon as the product is created. JPEG, PNG or
+              WebP, up to 5 MB.
+            </p>
+            <div className="mt-3 space-y-2">
+              <ImageField
+                inputLabel="Choose new product image"
+                triggerLabel="Choose image…"
+                file={addImageFile}
+                onFileChange={setAddImageFile}
+                disabled={saving}
+              />
+              {addImageFile ? (
+                <label className="block text-sm font-semibold text-slate-700">
+                  Description for this image (optional)
+                  <input
+                    type="text"
+                    maxLength={200}
+                    value={addImageAlt}
+                    onChange={(event) => setAddImageAlt(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </label>
+              ) : null}
+            </div>
+          </fieldset>
           <div className="mt-6 flex gap-3">
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={() => setAddOpen(false)}
-              disabled={saving}
-            >
+            <Button variant="secondary" className="flex-1" onClick={closeAdd} disabled={saving}>
               Cancel
             </Button>
-            <Button className="flex-1" onClick={submitAdd} loading={saving} loadingLabel="Adding…">
+            <Button
+              className="flex-1"
+              onClick={() => void submitAdd()}
+              loading={saving}
+              loadingLabel="Adding…"
+            >
               Add product
             </Button>
           </div>
@@ -940,24 +998,13 @@ export default function AdminCataloguePage(): JSX.Element {
                   </p>
                 ) : (
                   <div className="mt-4 space-y-2">
-                    <input
-                      ref={imageFileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      aria-label="Choose product image"
-                      className="hidden"
-                      onChange={(event) => {
-                        setImageFile(event.target.files?.[0] ?? null);
-                      }}
-                    />
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => imageFileInputRef.current?.click()}
+                    <ImageField
+                      inputLabel="Choose product image"
+                      triggerLabel="Choose image…"
+                      file={imageFile}
+                      onFileChange={setImageFile}
                       disabled={imageBusy}
-                    >
-                      {imageFile ? `Selected: ${imageFile.name}` : 'Choose image…'}
-                    </Button>
+                    />
                     <input
                       value={imageAlt}
                       onChange={(event) => setImageAlt(event.target.value)}
@@ -1071,26 +1118,13 @@ export default function AdminCataloguePage(): JSX.Element {
                 )}
               </div>
               <div className="mt-3 space-y-2">
-                <input
-                  ref={categoryFileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  aria-label="Choose category image"
-                  className="hidden"
-                  onChange={(event) => {
-                    setCategoryImageFile(event.target.files?.[0] ?? null);
-                  }}
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => categoryFileInputRef.current?.click()}
+                <ImageField
+                  inputLabel="Choose category image"
+                  triggerLabel="Upload / replace image…"
+                  file={categoryImageFile}
+                  onFileChange={setCategoryImageFile}
                   disabled={categoryImageBusy}
-                >
-                  {categoryImageFile
-                    ? `Selected: ${categoryImageFile.name}`
-                    : 'Upload / replace image…'}
-                </Button>
+                />
                 <Button
                   variant="accent"
                   size="sm"
