@@ -136,13 +136,6 @@ export const KYC_OVERALL_TONES: Record<KycOverallState, BadgeTone> = {
   VERIFIED: 'success',
 };
 
-export const KYC_OVERALL_CHIP_CLASSES: Record<KycOverallState, string> = {
-  VERIFIED: 'bg-emerald-100 text-emerald-700',
-  ACTION_REQUIRED: 'bg-rose-100 text-rose-700',
-  AWAITING_REVIEW: 'bg-sky-100 text-brand-navy',
-  INCOMPLETE: 'bg-slate-100 text-slate-600',
-};
-
 export const REQUIRED_VERIFICATION_DOCUMENTS: readonly DocumentType[] = [
   'AADHAAR',
   'DRIVING_LICENSE',

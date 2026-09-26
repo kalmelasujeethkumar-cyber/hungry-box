@@ -139,9 +139,7 @@ export default function AdminBranchesPage(): JSX.Element {
 
   return (
     <AdminLayout kicker="Branch locations" title="Branches">
-      {successMessage ? (
-        <Notice tone="success">{successMessage}</Notice>
-      ) : null}
+      {successMessage ? <Notice tone="success">{successMessage}</Notice> : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
 
       {loading ? (
@@ -168,8 +166,11 @@ export default function AdminBranchesPage(): JSX.Element {
                     <p className="mt-1 text-sm text-slate-600">{branch.address}</p>
                   ) : null}
                 </div>
-                <StatusBadge label={branchStatusLabel[branch.status]} tone={branchStatusTone[branch.status]} />
-                </div>
+                <StatusBadge
+                  label={branchStatusLabel[branch.status]}
+                  tone={branchStatusTone[branch.status]}
+                />
+              </div>
 
               <div className="mt-3">
                 <span className="rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy">
@@ -179,30 +180,22 @@ export default function AdminBranchesPage(): JSX.Element {
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {STATUS_ACTIONS[branch.status].map((action) => (
-                  <button
+                  <Button
                     key={action.label}
-                    type="button"
+                    size="sm"
+                    variant={action.danger ? 'dangerOutline' : 'secondary'}
                     onClick={() => requestStatus(branch, action.next)}
-                    className={
-                      action.danger
-                        ? 'rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50'
-                        : 'rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal hover:text-brand-teal'
-                    }
                   >
                     {action.label}
-                  </button>
+                  </Button>
                 ))}
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  variant={editingId === branch.id ? 'accentOutline' : 'secondary'}
                   onClick={() => openEdit(branch)}
-                  className={
-                    editingId === branch.id
-                      ? 'rounded-lg border border-brand-teal px-3 py-1.5 text-xs font-semibold text-brand-teal hover:bg-brand-sky/40'
-                      : 'rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal hover:text-brand-teal'
-                  }
                 >
                   {editingId === branch.id ? 'Close' : 'Edit'}
-                </button>
+                </Button>
               </div>
 
               {editingId === branch.id ? (

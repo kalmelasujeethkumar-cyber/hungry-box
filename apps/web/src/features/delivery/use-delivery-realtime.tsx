@@ -91,8 +91,7 @@ export function useDeliveryRealtime(): UseDeliveryRealtimeResult {
   return { lastEvent, connected, refetchKey };
 }
 
-export function RealtimeIndicator(): JSX.Element {
-  const { connected } = useDeliveryRealtime();
+export function RealtimePill({ connected }: { connected: boolean }): JSX.Element {
   return (
     <span
       className={
@@ -103,11 +102,19 @@ export function RealtimeIndicator(): JSX.Element {
     >
       <span
         className={
-          connected ? 'h-1.5 w-1.5 rounded-full bg-emerald-600' : 'h-1.5 w-1.5 rounded-full bg-amber-500'
+          connected
+            ? 'h-1.5 w-1.5 rounded-full bg-emerald-600'
+            : 'h-1.5 w-1.5 rounded-full bg-amber-500'
         }
         aria-hidden="true"
       />
       {connected ? 'Live' : 'Syncing'}
     </span>
   );
+}
+
+/** Opens its own socket. Use {@link RealtimePill} when the caller already holds a connection. */
+export function RealtimeIndicator(): JSX.Element {
+  const { connected } = useDeliveryRealtime();
+  return <RealtimePill connected={connected} />;
 }

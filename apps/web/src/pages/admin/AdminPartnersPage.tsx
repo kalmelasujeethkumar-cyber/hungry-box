@@ -10,6 +10,7 @@ import type {
 import { branchKycApi, branchesApi, branchDeliveryApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import EmptyState from '../../components/EmptyState';
+import { Button } from '../../components/Button';
 import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -139,11 +140,19 @@ export default function AdminPartnersPage(): JSX.Element {
         </select>
       </div>
 
-      {error ? <Notice tone="error">{error}</Notice> : null}
-      {kycError ? <Notice tone="error">{kycError}</Notice> : null}
+      {error ? (
+        <Notice tone="error" className="mt-4">
+          {error}
+        </Notice>
+      ) : null}
+      {kycError ? (
+        <Notice tone="error" className="mt-4">
+          {kycError}
+        </Notice>
+      ) : null}
 
       {loading ? (
-        <LoadingState message="Loading partners" />
+        <LoadingState message="Loading partners" className="mt-8" />
       ) : partners.length === 0 ? (
         <div className="mt-8">
           <EmptyState
@@ -159,7 +168,7 @@ export default function AdminPartnersPage(): JSX.Element {
             return (
               <li
                 key={partner.id}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4"
               >
                 <div className="min-w-0">
                   <p className="truncate font-bold text-brand-navy">{partner.fullName}</p>
@@ -173,37 +182,41 @@ export default function AdminPartnersPage(): JSX.Element {
                     </p>
                   ) : null}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {kyc ? (
                     <>
-                      <span className="hidden sm:inline-block">
-                        <StatusBadge
-                          label={KYC_OVERALL_LABELS[kyc.overallState]}
-                          tone={KYC_OVERALL_TONES[kyc.overallState]}
-                        />
-                      </span>
+                      <StatusBadge
+                        label={KYC_OVERALL_LABELS[kyc.overallState]}
+                        tone={KYC_OVERALL_TONES[kyc.overallState]}
+                      />
                       {kyc.hasAadhaar ? (
-                        <button
-                          type="button"
+                        <Button
+                          size="sm"
+                          variant="secondary"
                           onClick={() => handleViewDocument(partner.partnerId, 'AADHAAR')}
-                          className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-bold text-slate-700 hover:border-brand-teal"
                         >
                           {KYC_DOCUMENT_LABELS.AADHAAR}
-                        </button>
+                        </Button>
                       ) : null}
                       {kyc.hasDrivingLicense ? (
-                        <button
-                          type="button"
+                        <Button
+                          size="sm"
+                          variant="secondary"
                           onClick={() => handleViewDocument(partner.partnerId, 'DRIVING_LICENSE')}
-                          className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-bold text-slate-700 hover:border-brand-teal"
                         >
                           {KYC_DOCUMENT_LABELS.DRIVING_LICENSE}
-                        </button>
+                        </Button>
                       ) : null}
                     </>
                   ) : null}
-                  <StatusBadge label={AVAILABILITY_LABELS[partner.availability]} tone={AVAILABILITY_TONES[partner.availability]} />
-                  <StatusBadge label={PARTNER_STATUS_LABELS[partner.status]} tone={PARTNER_STATUS_TONES[partner.status]} />
+                  <StatusBadge
+                    label={AVAILABILITY_LABELS[partner.availability]}
+                    tone={AVAILABILITY_TONES[partner.availability]}
+                  />
+                  <StatusBadge
+                    label={PARTNER_STATUS_LABELS[partner.status]}
+                    tone={PARTNER_STATUS_TONES[partner.status]}
+                  />
                 </div>
               </li>
             );

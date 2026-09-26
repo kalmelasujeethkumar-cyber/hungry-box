@@ -4,20 +4,22 @@ import type { BranchDto, OrderStatus, OrderSummaryDto } from '@hungrybox/shared'
 import { branchOrdersApi, branchesApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import EmptyState from '../../components/EmptyState';
+import { FilterChips } from '../../components/FilterChips';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { ORDER_STATUS_FILTERS } from '../../features/manager/manager-orders';
-import { ORDER_STATUS_LABELS } from '../../features/orders/order-status';
+import {
+  ORDER_STATUS_LABELS,
+  ORDER_STATUS_TONES,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_STATUS_LABELS,
+  PAYMENT_STATUS_TONES,
+} from '../../features/orders/order-status';
+import { formatPlacedAt } from '../../lib/format';
 import { formatPaise } from '../../lib/money';
 import AdminLayout from './AdminLayout';
-
-function formatPlacedAt(iso: string): string {
-  return new Date(iso).toLocaleString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 export default function AdminOrdersPage(): JSX.Element {
   const { token } = useAuth();
@@ -71,28 +73,22 @@ export default function AdminOrdersPage(): JSX.Element {
             ))}
           </select>
         </label>
-        <div className="flex flex-wrap gap-2">
-          {ORDER_STATUS_FILTERS.map((option) => (
-            <button
-              key={option.label}
-              type="button"
-              onClick={() => setStatus(option.value)}
-              className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
-                status === option.value
-                  ? 'bg-brand-teal text-white'
-                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-brand-sky/40'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <FilterChips
+          options={ORDER_STATUS_FILTERS}
+          value={status}
+          onChange={setStatus}
+          ariaLabel="Filter orders by status"
+        />
       </div>
 
-      {error ? <p className="mt-6 text-sm font-semibold text-red-600">{error}</p> : null}
+      {error ? (
+        <Notice tone="error" className="mt-6">
+          {error}
+        </Notice>
+      ) : null}
 
       {loading ? (
-        <p className="mt-8 text-sm text-slate-500">Loading orders…</p>
+        <LoadingState message="Loading orders…" className="mt-8" />
       ) : orders.length === 0 ? (
         <div className="mt-8">
           <EmptyState
@@ -112,14 +108,22 @@ export default function AdminOrdersPage(): JSX.Element {
                 <p className="font-bold text-brand-navy">{order.orderNumber}</p>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {formatPlacedAt(order.placedAt)} · {order.itemCount} item
-                  {order.itemCount === 1 ? '' : 's'} · {order.branch.name}
+                  {order.itemCount === 1 ? '' : 's'} · {order.branch.name} ·{' '}
+                  {order.paymentMethod
+                    ? PAYMENT_METHOD_LABELS[order.paymentMethod]
+                    : 'No payment method'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-bold text-brand-navy">{formatPaise(order.totalMinor)}</span>
-                <span className="rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy">
-                  {ORDER_STATUS_LABELS[order.status]}
-                </span>
+                <StatusBadge
+                  label={PAYMENT_STATUS_LABELS[order.paymentStatus]}
+                  tone={PAYMENT_STATUS_TONES[order.paymentStatus]}
+                />
+                <StatusBadge
+                  label={ORDER_STATUS_LABELS[order.status]}
+                  tone={ORDER_STATUS_TONES[order.status]}
+                />
               </div>
             </li>
           ))}

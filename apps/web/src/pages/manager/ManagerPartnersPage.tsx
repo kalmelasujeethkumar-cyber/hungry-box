@@ -10,8 +10,17 @@ import { ApiError, branchDeliveryApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
+import { Button } from '../../components/Button';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
 import { PlusIcon, UserIcon } from '../../features/storefront/components/icons';
-import { AVAILABILITY_LABELS, PARTNER_STATUS_LABELS } from '../../features/delivery/delivery-status';
+import {
+  AVAILABILITY_LABELS,
+  AVAILABILITY_TONES,
+  PARTNER_STATUS_LABELS,
+  PARTNER_STATUS_TONES,
+} from '../../features/delivery/delivery-status';
 import ManagerLayout from './ManagerLayout';
 
 function PartnerRow({ partner }: { partner: DeliveryPartnerListItemDto }): JSX.Element {
@@ -28,12 +37,14 @@ function PartnerRow({ partner }: { partner: DeliveryPartnerListItemDto }): JSX.E
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <span className="rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy">
-          {AVAILABILITY_LABELS[partner.availability]}
-        </span>
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-          {PARTNER_STATUS_LABELS[partner.status]}
-        </span>
+        <StatusBadge
+          label={AVAILABILITY_LABELS[partner.availability]}
+          tone={AVAILABILITY_TONES[partner.availability]}
+        />
+        <StatusBadge
+          label={PARTNER_STATUS_LABELS[partner.status]}
+          tone={PARTNER_STATUS_TONES[partner.status]}
+        />
       </div>
     </Link>
   );
@@ -56,6 +67,7 @@ export default function ManagerPartnersPage(): JSX.Element {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<DeliveryPartnerStatus | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
@@ -70,12 +82,14 @@ export default function ManagerPartnersPage(): JSX.Element {
 
   const refresh = useCallback(() => {
     if (!token) return;
+    setLoading(true);
     branchDeliveryApi
       .listPartners(token, { status: statusFilter, search: search.trim() || undefined })
       .then(setPartners)
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Could not load partners.');
-      });
+      })
+      .finally(() => setLoading(false));
   }, [token, statusFilter, search]);
 
   useEffect(() => {
@@ -99,7 +113,14 @@ export default function ManagerPartnersPage(): JSX.Element {
       .then((result) => {
         setTempPassword(result.temporaryPassword);
         setCreateOpen(false);
-        setForm({ fullName: '', loginId: '', email: '', mobile: '', vehicleType: '', vehicleNumber: '' });
+        setForm({
+          fullName: '',
+          loginId: '',
+          email: '',
+          mobile: '',
+          vehicleType: '',
+          vehicleNumber: '',
+        });
         refresh();
       })
       .catch((err: unknown) => {
@@ -139,55 +160,57 @@ export default function ManagerPartnersPage(): JSX.Element {
             ))}
           </select>
         </div>
-        <button
-          type="button"
+        <Button
+          variant="accent"
           onClick={() => {
             setTempPassword(null);
             setCreateOpen(true);
           }}
-          className="inline-flex items-center gap-2 rounded-xl bg-brand-teal px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-teal/90"
         >
           <PlusIcon className="h-4 w-4" />
           Add partner
-        </button>
+        </Button>
       </div>
 
       {error ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <Notice tone="error" className="mt-4">
           {error}
-        </div>
+        </Notice>
       ) : null}
 
       {tempPassword ? (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <p className="font-bold">Partner created</p>
-          <p className="mt-1">
+        <Notice tone="success" className="mt-4" title="Partner created">
+          <p>
             One-time login password: <span className="font-mono font-bold">{tempPassword}</span>
           </p>
-          <p className="mt-1 text-xs">
-            Share it once. It is not stored and cannot be recovered.
-          </p>
-        </div>
+          <p className="mt-1 text-xs">Share it once. It is not stored and cannot be recovered.</p>
+        </Notice>
       ) : null}
 
-      <div className="mt-5 space-y-3">
-        {partners.length === 0 ? (
-          <EmptyState
-            icon={<UserIcon className="h-8 w-8" />}
-            title="No partners found"
-            message="Add a delivery partner to get started with deliveries in your branch."
-          />
-        ) : (
-          partners.map((partner) => <PartnerRow key={partner.id} partner={partner} />)
-        )}
-      </div>
+      {loading && partners.length === 0 ? (
+        <LoadingState message="Loading partners…" className="mt-10" />
+      ) : (
+        <div className="mt-5 space-y-3">
+          {partners.length === 0 ? (
+            <EmptyState
+              icon={<UserIcon className="h-8 w-8" />}
+              title="No partners found"
+              message="Add a delivery partner to get started with deliveries in your branch."
+            />
+          ) : (
+            partners.map((partner) => <PartnerRow key={partner.id} partner={partner} />)
+          )}
+        </div>
+      )}
 
       <ConfirmDialog
         open={createOpen}
         title="Add delivery partner"
         description="The partner receives a partner ID and a one-time password. Documents are collected during verification."
-        confirmLabel={creating ? 'Creating…' : 'Create partner'}
+        confirmLabel="Create partner"
         cancelLabel="Cancel"
+        busy={creating}
+        busyLabel="Creating…"
         onConfirm={submitCreate}
         onClose={() => !creating && setCreateOpen(false)}
       >

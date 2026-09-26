@@ -30,8 +30,11 @@ export default function AdminLayout({
     <main className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-          <Link to={HOME_PATH} className="text-xl font-extrabold tracking-tight text-brand-navy">
-            hungry box
+          <Link
+            to={HOME_PATH}
+            className="shrink-0 text-xl font-extrabold tracking-tight text-brand-navy"
+          >
+            hungry <span className="text-brand-orange">box</span>
           </Link>
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Admin navigation">
             {NAV.map((item) => (
@@ -42,7 +45,9 @@ export default function AdminLayout({
                 className={({ isActive }) =>
                   [
                     'rounded-lg px-2.5 py-1.5 text-sm font-semibold',
-                    isActive ? 'bg-brand-sky/40 text-brand-navy' : 'text-slate-600 hover:text-brand-teal',
+                    isActive
+                      ? 'bg-brand-sky/40 text-brand-navy'
+                      : 'text-slate-600 hover:text-brand-teal',
                   ].join(' ')
                 }
               >
@@ -50,8 +55,11 @@ export default function AdminLayout({
               </NavLink>
             ))}
           </nav>
-          <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-slate-600 sm:inline">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="hidden shrink-0 rounded-full bg-brand-sky/60 px-2.5 py-0.5 text-xs font-bold text-brand-navy sm:inline">
+              Super admin
+            </span>
+            <span className="hidden min-w-0 truncate text-sm text-slate-600 sm:inline">
               {user?.name ?? user?.loginId}
             </span>
             <SignOutButton />
@@ -67,7 +75,7 @@ export default function AdminLayout({
             </p>
             <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-brand-navy">{title}</h1>
           </div>
-          <div className="flex flex-wrap gap-2 lg:hidden" aria-label="Admin navigation">
+          <div className="flex flex-wrap gap-2 lg:hidden" aria-label="Admin navigation (compact)">
             {NAV.map((item) => (
               <NavLink
                 key={item.to}

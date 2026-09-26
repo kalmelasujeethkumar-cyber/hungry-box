@@ -19,16 +19,18 @@ One application, one authentication flow, role-based routing after login:
 
 ## Project status
 
-**Phase 7 - Super Admin operations (current).** Phase 7 completes the Super Admin's global
-operations surface on top of the verified Phase 4/5/6 base: branch lifecycle management
-(activate/pause/deactivate), branch manager administration (with one-time passwords),
-suspended-user enforcement in the auth guard, a global catalog (products, categories,
-images), cross-branch order/delivery/audit visibility, and a read-only analytics +
-reports layer (Recharts dashboards + CSV exports). Deliveries, checkout/payments/orders,
-branch-scoped manager operations, and the customer/delivery experiences all remain green.
-Phase 7 was delivered **migration-free** — no schema change or migration was run. See
-`docs/phase-7-report.md` for the 38-point delivery report. What remains (Phase 8+) is
-refund actions, promotions, payouts, and the remaining admin dashboards.
+**Phase 11D - Admin + Manager shared UI consistency (current).** Phase 11 is a production-quality
+UI hardening track: Phase 11B introduced the shared UI foundation (`Button`, `Dialog`, `Notice`,
+`LoadingState`, `StatusBadge`, ...), Phase 11C applied it to the customer experience, and Phase 11D
+applies it to the Super Admin and Branch Manager surfaces. Phase 11D standardizes filters, buttons,
+status badges, loading/error states, date formatting, and audit-log rendering across Admin/Manager
+pages; extracts shared audit and filter primitives; and removes verified-dead web code. The live
+delivery, checkout/payments/orders, manager operations, and customer experiences all remain green
+(192/192 web tests). Phases 8-10 delivered end-to-end integration hardening, deployment readiness,
+COD, public catalog media, and private KYC documents (see `docs/phase-8-report.md` through
+`docs/phase-10e-acceptance-report.md`); Phase 11D is delivered **migration-free** - no schema change.
+See `docs/phase-11d-report.md` for the delivery report. What remains is refund actions (requires a
+schema change), promotions, payouts, and customer/delivery app-wide UI consistency.
 
 ## Technology stack
 
@@ -258,8 +260,21 @@ entities; refund/analytics reporting derives from `Payment.status` (read-only; r
   global catalog with images, cross-branch order/delivery/audit visibility, and a read-only
   analytics + reports layer (Recharts dashboards + CSV exports) with an admin frontend and
   full API + web test coverage. Delivered migration-free (`docs/phase-7-report.md`).
-- **Phase 8+:** Refund actions (requires a schema change), promotions, payouts, and the
-  remaining admin dashboards.
+- **Phase 8 (complete):** Live delivery lifecycle, branch isolation & realtime hardening
+  (`docs/phase-8-report.md`).
+- **Phase 9 (complete):** Deployment & staging readiness (`docs/phase-9-report.md`).
+- **Phase 10 (complete):** COD (cash only), public catalog media via Cloudinary, private
+  delivery-partner KYC documents, and final acceptance/hardening
+  (`docs/phase-10b-report.md`, `docs/phase-10c-report.md`, `docs/phase-10d-report.md`,
+  `docs/phase-10e-acceptance-report.md`).
+- **Phase 11 (in progress):** Production-quality UI hardening across all four roles.
+  - 11B (complete): shared UI foundation - `Button`, `Dialog`, `Notice`, `LoadingState`,
+    `StatusBadge`, `EmptyState`, form fields.
+  - 11C (complete): customer production experience.
+  - 11D (complete): Admin + Manager shared UI consistency - shared audit panel, filter chips,
+    standardized status/loading/error states, dead-code cleanup (`docs/phase-11d-report.md`).
+- **Phase 12+:** Customer/Delivery app-wide UI consistency, `ConfirmDialog`/icons reorganization,
+  refund actions (requires a schema change), promotions, and payouts.
 
 Phases are developed one at a time; the platform is built in-order, not by skipping ahead.
 

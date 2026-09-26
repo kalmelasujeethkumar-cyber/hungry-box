@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { CartItemDto, CartSummary } from '@hungrybox/shared';
+import type { CartSummary } from '@hungrybox/shared';
 import { cartApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import { useStorefront } from './storefront-context';
@@ -131,8 +131,4 @@ export function useCart(): CartContextValue {
     throw new Error('useCart must be used within a CartProvider');
   }
   return context;
-}
-
-export function findCartItem(cart: CartSummary | null, productId: string): CartItemDto | null {
-  return cart?.items.find((item) => item.productId === productId) ?? null;
 }

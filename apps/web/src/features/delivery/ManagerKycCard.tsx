@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { KycDocumentType, KycStatusDto } from '@hungrybox/shared';
 import { branchKycApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
+import { Button } from '../../components/Button';
+import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TextareaField } from '../../components/forms/TextareaField';
@@ -16,7 +18,11 @@ import {
 } from './delivery-status';
 import ConfirmDialog from '../storefront/components/ConfirmDialog';
 
-export default function ManagerKycCard({ partnerId }: { partnerId: string | undefined }): JSX.Element {
+export default function ManagerKycCard({
+  partnerId,
+}: {
+  partnerId: string | undefined;
+}): JSX.Element {
   const { token } = useAuth();
   const [kyc, setKyc] = useState<KycStatusDto | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,7 +84,7 @@ export default function ManagerKycCard({ partnerId }: { partnerId: string | unde
     return (
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">KYC review</h2>
-        <p className="mt-3 text-sm text-slate-500">Loading KYC status…</p>
+        <LoadingState message="Loading KYC status…" className="mt-3" />
       </section>
     );
   }
@@ -88,7 +94,10 @@ export default function ManagerKycCard({ partnerId }: { partnerId: string | unde
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">KYC review</h2>
         {kyc ? (
-          <StatusBadge label={KYC_OVERALL_LABELS[kyc.overallState]} tone={KYC_OVERALL_TONES[kyc.overallState]} />
+          <StatusBadge
+            label={KYC_OVERALL_LABELS[kyc.overallState]}
+            tone={KYC_OVERALL_TONES[kyc.overallState]}
+          />
         ) : null}
       </div>
       <p className="mt-1 text-xs text-slate-500">
@@ -104,7 +113,10 @@ export default function ManagerKycCard({ partnerId }: { partnerId: string | unde
           const canReview = status === 'UPLOADED' || status === 'REJECTED';
           const canView = status !== 'PENDING';
           return (
-            <li key={type} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <li
+              key={type}
+              className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+            >
               <div>
                 <p className="text-sm font-semibold text-slate-800">{KYC_DOCUMENT_LABELS[type]}</p>
                 <p className="text-xs text-slate-500">{KYC_DOCUMENT_STATUS_LABELS[status]}</p>
@@ -123,36 +135,36 @@ export default function ManagerKycCard({ partnerId }: { partnerId: string | unde
                   tone={KYC_DOCUMENT_STATUS_TONES[status]}
                 />
                 {canView ? (
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     disabled={busy}
                     onClick={() => void handleView(type)}
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-50"
                   >
                     View
-                  </button>
+                  </Button>
                 ) : null}
                 {canReview ? (
                   <>
-                    <button
-                      type="button"
+                    <Button
+                      variant="accent"
+                      size="sm"
                       disabled={busy || status === 'REJECTED'}
                       onClick={() => runReview(type, 'VERIFY')}
-                      className="rounded-lg bg-brand-teal px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
                     >
                       Verify
-                    </button>
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      variant="dangerOutline"
+                      size="sm"
                       disabled={busy}
                       onClick={() => {
                         setRejectType(type);
                         setReason('');
                       }}
-                      className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-bold text-red-600 disabled:opacity-50"
                     >
                       Reject
-                    </button>
+                    </Button>
                   </>
                 ) : null}
               </div>

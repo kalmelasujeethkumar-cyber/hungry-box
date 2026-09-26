@@ -17,7 +17,8 @@ import CartPage from '../pages/customer/CartPage';
 import CheckoutPage from '../pages/customer/CheckoutPage';
 import OrderDetailPage from '../pages/customer/OrderDetailPage';
 import OrderSuccessPage from '../pages/customer/OrderSuccessPage';
-import OrdersPage, { ProfilePage } from '../pages/customer/OrdersPage';
+import OrderHistoryPage from '../pages/customer/OrderHistoryPage';
+import { ProfilePage } from '../pages/customer/OrdersProfilePage';
 import StorefrontPage from '../pages/customer/StorefrontPage';
 import DeliveryHomePage from '../pages/delivery/DeliveryHomePage';
 import DeliveryDeliveriesPage from '../pages/delivery/DeliveryDeliveriesPage';
@@ -245,7 +246,7 @@ export const appRouter = createBrowserRouter([
       { path: 'checkout', element: <CheckoutPage /> },
       { path: 'checkout/success/:orderId', element: <OrderSuccessPage /> },
       { path: 'addresses', element: <AddressesPage /> },
-      { path: 'orders', element: <OrdersPage /> },
+      { path: 'orders', element: <OrderHistoryPage /> },
       { path: 'orders/:orderId', element: <OrderDetailPage /> },
       { path: 'profile', element: <ProfilePage /> },
     ],

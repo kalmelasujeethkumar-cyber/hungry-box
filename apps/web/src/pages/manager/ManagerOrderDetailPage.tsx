@@ -4,9 +4,14 @@ import { Link, useParams } from 'react-router-dom';
 import type { OrderDetailDto } from '@hungrybox/shared';
 import { ApiError, branchOrdersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
+import { LoadingState } from '../../components/LoadingState';
+import { Button } from '../../components/Button';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
 import {
   ORDER_STATUS_LABELS,
+  ORDER_STATUS_TONES,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
 } from '../../features/orders/order-status';
@@ -46,6 +51,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [collectOpen, setCollectOpen] = useState(false);
   const [collectReason, setCollectReason] = useState('');
+  const [collectError, setCollectError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     if (!token || !orderId) return;
@@ -64,8 +70,12 @@ export default function ManagerOrderDetailPage(): JSX.Element {
   if (!order) {
     return (
       <ManagerLayout kicker="Branch operations" title="Order">
-        {error ? <p className="mt-6 text-sm font-semibold text-red-600">{error}</p> : null}
-        <p className="mt-6 text-sm text-slate-500">Loading order…</p>
+        {error ? (
+          <Notice tone="error" className="mt-6">
+            {error}
+          </Notice>
+        ) : null}
+        {!error ? <LoadingState message="Loading order…" className="mt-8" /> : null}
       </ManagerLayout>
     );
   }
@@ -74,7 +84,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
   const canCancel = staffCancellable(order.status);
 
   const advance = (): void => {
-    if (!token || !advanceTarget) return;
+    if (!token || !advanceTarget || busy) return;
     setBusy(true);
     setError(null);
     branchOrdersApi
@@ -87,7 +97,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
   };
 
   const cancel = (): void => {
-    if (!token) return;
+    if (!token || busy) return;
     setBusy(true);
     setError(null);
     branchOrdersApi
@@ -107,11 +117,17 @@ export default function ManagerOrderDetailPage(): JSX.Element {
   );
 
   const collect = (): void => {
-    if (!token || !codPaymentPending) return;
+    if (!token || !codPaymentPending || busy) return;
+    const reason = collectReason.trim();
+    if (!reason) {
+      setCollectError('Reason is required to record the collection.');
+      return;
+    }
     setBusy(true);
     setError(null);
+    setCollectError(null);
     branchOrdersApi
-      .collectCod(order.id, collectReason.trim(), token)
+      .collectCod(order.id, reason, token)
       .then(setOrder)
       .catch((err: unknown) =>
         setError(err instanceof ApiError ? err.message : 'Could not record the collection.'),
@@ -129,34 +145,29 @@ export default function ManagerOrderDetailPage(): JSX.Element {
         <div className="space-y-4">
           <section className="rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="rounded-full bg-brand-sky/60 px-3 py-1 text-sm font-bold text-brand-navy">
-                {ORDER_STATUS_LABELS[order.status]}
-              </span>
+              <StatusBadge
+                label={ORDER_STATUS_LABELS[order.status]}
+                tone={ORDER_STATUS_TONES[order.status]}
+              />
               <span className="text-xs text-slate-500">
                 Placed {new Date(order.placedAt).toLocaleString('en-IN')}
               </span>
             </div>
-            {error ? <p className="mt-3 text-sm font-semibold text-red-600">{error}</p> : null}
+            {error ? (
+              <Notice tone="error" className="mt-3">
+                {error}
+              </Notice>
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
               {advanceTarget ? (
-                <button
-                  type="button"
-                  onClick={advance}
-                  disabled={busy}
-                  className="rounded-lg bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange/90 disabled:opacity-50"
-                >
+                <Button onClick={advance} loading={busy} loadingLabel="Working…">
                   {nextStatusLabel(order.status)}
-                </button>
+                </Button>
               ) : null}
               {canCancel ? (
-                <button
-                  type="button"
-                  onClick={() => setCancelOpen(true)}
-                  disabled={busy}
-                  className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
-                >
+                <Button variant="dangerOutline" onClick={() => setCancelOpen(true)} disabled={busy}>
                   Cancel order
-                </button>
+                </Button>
               ) : null}
             </div>
           </section>
@@ -250,8 +261,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
                 </p>
                 {payment.method === 'COD' && payment.status === 'PAID' && payment.collectedAt ? (
                   <p className="mt-0.5 text-xs font-semibold text-emerald-700">
-                    Collected{' '}
-                    {new Date(payment.collectedAt).toLocaleString('en-IN')}
+                    Collected {new Date(payment.collectedAt).toLocaleString('en-IN')}
                     {payment.collectedByRole === 'DELIVERY_PARTNER' ? ' · by partner' : ''}
                     {payment.collectedByRole === 'BRANCH_MANAGER' ? ' · by branch' : ''}
                   </p>
@@ -259,14 +269,14 @@ export default function ManagerOrderDetailPage(): JSX.Element {
               </div>
             ))}
             {codPaymentPending ? (
-              <button
-                type="button"
+              <Button
+                variant="accent"
+                className="mt-3"
                 onClick={() => setCollectOpen(true)}
                 disabled={busy}
-                className="mt-3 rounded-lg bg-brand-teal px-4 py-2 text-sm font-bold text-white hover:bg-brand-teal/90 disabled:opacity-50"
               >
                 Cash collected — record it
-              </button>
+              </Button>
             ) : null}
           </section>
 
@@ -285,6 +295,8 @@ export default function ManagerOrderDetailPage(): JSX.Element {
         description={`${order.orderNumber} will be cancelled and the customer will be notified.`}
         confirmLabel="Cancel order"
         danger
+        busy={busy && cancelOpen}
+        busyLabel="Cancelling…"
         onConfirm={cancel}
         onClose={() => setCancelOpen(false)}
       />
@@ -293,15 +305,26 @@ export default function ManagerOrderDetailPage(): JSX.Element {
         title="Record cash collection"
         description={`Mark the ${formatPaise(order.totalMinor)} cash-on-delivery payment for ${order.orderNumber} as collected.`}
         confirmLabel="Mark as collected"
+        busy={busy && collectOpen}
+        busyLabel="Recording…"
         onConfirm={collect}
         onClose={() => {
           setCollectOpen(false);
           setCollectReason('');
+          setCollectError(null);
         }}
       >
+        {collectError ? (
+          <Notice tone="error" className="mt-3">
+            {collectError}
+          </Notice>
+        ) : null}
         <textarea
           value={collectReason}
-          onChange={(event) => setCollectReason(event.target.value)}
+          onChange={(event) => {
+            setCollectReason(event.target.value);
+            setCollectError(null);
+          }}
           placeholder="Reason (required) — e.g. cash was collected, app failed during final step"
           maxLength={300}
           rows={2}

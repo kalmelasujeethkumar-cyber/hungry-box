@@ -42,7 +42,6 @@ import type {
   KycReviewInput,
   KycStatusDto,
   LoginResponse,
-  NotificationDto,
   OrderDetailDto,
   OrderStatus,
   OrderSummaryDto,
@@ -565,17 +564,6 @@ export const branchDeliveryApi = {
 export const deliveryTrackingApi = {
   get: (orderId: string, token: string) =>
     apiRequest<DeliveryTrackingDto>(`/orders/${orderId}/delivery-tracking`, { token }),
-};
-
-export const notificationsApi = {
-  list: (token: string) => apiRequest<NotificationDto[]>('/notifications', { token }),
-  markRead: (notificationId: string, token: string) =>
-    apiRequest<NotificationDto>(`/notifications/${notificationId}/read`, {
-      method: 'POST',
-      token,
-    }),
-  markAllRead: (token: string) =>
-    apiRequest<void>('/notifications/read-all', { method: 'POST', token }),
 };
 
 export const branchesApi = {

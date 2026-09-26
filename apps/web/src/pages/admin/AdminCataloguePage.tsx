@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from 'react';
+import type { JSX } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   CatalogStatus,
@@ -9,14 +9,16 @@ import type {
 } from '@hungrybox/shared';
 import { categoriesApi, productsApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
+import { Dialog } from '../../components/Dialog';
+import { Button } from '../../components/Button';
+import { FilterChips } from '../../components/FilterChips';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
+import { catalogStatusLabel, catalogStatusTone } from '../../components/status';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
-import {
-  CloseIcon,
-  PackageIcon,
-  PlusIcon,
-  TrashIcon,
-} from '../../features/storefront/components/icons';
+import { PackageIcon, PlusIcon, TrashIcon } from '../../features/storefront/components/icons';
 import AdminLayout from './AdminLayout';
 
 type ProductForm = { name: string; slug: string; description: string; categoryId: string };
@@ -47,60 +49,18 @@ function imageFileError(file: File): string | null {
   return null;
 }
 
+const CATALOGUE_VIEWS = [
+  { value: 'products', label: 'Products' },
+  { value: 'categories', label: 'Categories' },
+] as const;
+
 function sortImagesByOrder(images: ProductImageDto[]): ProductImageDto[] {
   return [...images].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-function StatusBadge({ status }: { status: CatalogStatus }): JSX.Element {
-  return (
-    <span
-      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${
-        status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
-
-function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="catalogue-modal-title"
-    >
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
-        <div className="flex items-start justify-between gap-3">
-          <h2 id="catalogue-modal-title" className="text-lg font-bold text-brand-navy">
-            {title}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-lg p-1 text-slate-400 hover:text-slate-600"
-          >
-            <CloseIcon className="h-5 w-5" />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 export default function AdminCataloguePage(): JSX.Element {
   const { token } = useAuth();
+
   const [view, setView] = useState<'products' | 'categories'>('products');
   const [products, setProducts] = useState<GlobalProductListItemDto[]>([]);
   const [categories, setCategories] = useState<CategoryDto[]>([]);
@@ -557,56 +517,35 @@ export default function AdminCataloguePage(): JSX.Element {
 
   return (
     <AdminLayout kicker="Global catalogue" title="Catalogue">
-      <div className="mt-6 inline-flex gap-1 rounded-xl border border-slate-300 bg-white p-1">
-        <button
-          type="button"
-          onClick={() => setView('products')}
-          className={
-            view === 'products'
-              ? 'rounded-lg bg-brand-teal px-4 py-2 text-sm font-bold text-white'
-              : 'rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:border-brand-teal'
-          }
-        >
-          Products
-        </button>
-        <button
-          type="button"
-          onClick={() => setView('categories')}
-          className={
-            view === 'categories'
-              ? 'rounded-lg bg-brand-teal px-4 py-2 text-sm font-bold text-white'
-              : 'rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:border-brand-teal'
-          }
-        >
-          Categories
-        </button>
-      </div>
+      <FilterChips
+        className="mt-6"
+        ariaLabel="Choose catalogue view"
+        options={CATALOGUE_VIEWS}
+        value={view}
+        onChange={setView}
+      />
 
       {!modalOpen && error ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <Notice tone="error" className="mt-4">
           {error}
-        </div>
+        </Notice>
       ) : null}
       {!modalOpen && success ? (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <Notice tone="success" className="mt-4">
           {success}
-        </div>
+        </Notice>
       ) : null}
 
       {view === 'products' ? (
         <div className="mt-6">
           <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={openAdd}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand-teal px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-teal/90"
-            >
+            <Button variant="accent" onClick={openAdd}>
               <PlusIcon className="h-4 w-4" />
               Add product
-            </button>
+            </Button>
           </div>
           {productsLoading ? (
-            <p className="mt-6 text-sm text-slate-500">Loading products…</p>
+            <LoadingState message="Loading products…" className="mt-8" />
           ) : products.length === 0 ? (
             <div className="mt-8">
               <EmptyState
@@ -642,35 +581,34 @@ export default function AdminCataloguePage(): JSX.Element {
                             {product.categoryName}
                           </span>
                         ) : null}
-                        <StatusBadge status={product.status} />
+                        <StatusBadge
+                          label={catalogStatusLabel[product.status]}
+                          tone={catalogStatusTone[product.status]}
+                        />
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(product)}
-                        className="rounded-lg bg-brand-teal px-3 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90"
-                      >
+                      <Button variant="accent" size="sm" onClick={() => openEdit(product)}>
                         Edit
-                      </button>
+                      </Button>
                       {product.status === 'ACTIVE' ? (
-                        <button
-                          type="button"
+                        <Button
+                          variant="dangerOutline"
+                          size="sm"
                           onClick={() => setToggleProduct(product)}
                           disabled={saving}
-                          className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
                         >
                           Deactivate
-                        </button>
+                        </Button>
                       ) : (
-                        <button
-                          type="button"
+                        <Button
+                          variant="successOutline"
+                          size="sm"
                           onClick={() => setProductStatus(product, 'ACTIVE')}
                           disabled={saving}
-                          className="rounded-lg border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
                         >
                           Activate
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -682,17 +620,13 @@ export default function AdminCataloguePage(): JSX.Element {
       ) : (
         <div className="mt-6">
           <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={openCreateCategory}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand-teal px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-teal/90"
-            >
+            <Button variant="accent" onClick={openCreateCategory}>
               <PlusIcon className="h-4 w-4" />
               Add category
-            </button>
+            </Button>
           </div>
           {categoriesLoading ? (
-            <p className="mt-6 text-sm text-slate-500">Loading categories…</p>
+            <LoadingState message="Loading categories…" className="mt-8" />
           ) : categories.length === 0 ? (
             <div className="mt-8">
               <EmptyState
@@ -722,7 +656,10 @@ export default function AdminCataloguePage(): JSX.Element {
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
                           {category.sortOrder}
                         </span>
-                        <StatusBadge status={category.status} />
+                        <StatusBadge
+                          label={catalogStatusLabel[category.status]}
+                          tone={catalogStatusTone[category.status]}
+                        />
                       </div>
                       <p className="mt-0.5 truncate font-mono text-xs text-slate-500">
                         /{category.slug}
@@ -733,31 +670,27 @@ export default function AdminCataloguePage(): JSX.Element {
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openEditCategory(category)}
-                      className="rounded-lg bg-brand-teal px-3 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90"
-                    >
+                    <Button variant="accent" size="sm" onClick={() => openEditCategory(category)}>
                       Edit
-                    </button>
+                    </Button>
                     {category.status === 'ACTIVE' ? (
-                      <button
-                        type="button"
+                      <Button
+                        variant="dangerOutline"
+                        size="sm"
                         onClick={() => setToggleCategory(category)}
                         disabled={categorySaving}
-                        className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
                         Deactivate
-                      </button>
+                      </Button>
                     ) : (
-                      <button
-                        type="button"
+                      <Button
+                        variant="successOutline"
+                        size="sm"
                         onClick={() => setToggleCategory(category)}
                         disabled={categorySaving}
-                        className="rounded-lg border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
                       >
                         Activate
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </li>
@@ -768,13 +701,20 @@ export default function AdminCataloguePage(): JSX.Element {
       )}
 
       {addOpen ? (
-        <Modal
+        <Dialog
+          open={addOpen}
           title="Add product"
           onClose={() => {
             if (!saving) setAddOpen(false);
           }}
+          closeOnBackdrop={false}
+          className="max-w-lg"
         >
-          {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
+          {error ? (
+            <Notice tone="error" className="mt-4">
+              {error}
+            </Notice>
+          ) : null}
           <div className="mt-4 space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
               Name
@@ -818,36 +758,41 @@ export default function AdminCataloguePage(): JSX.Element {
             </label>
           </div>
           <div className="mt-6 flex gap-3">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              className="flex-1"
               onClick={() => setAddOpen(false)}
               disabled={saving}
-              className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
             >
               Cancel
-            </button>
-            <button
-              type="button"
-              onClick={submitAdd}
-              disabled={saving}
-              className="flex-1 rounded-lg bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange/90 disabled:opacity-50"
-            >
+            </Button>
+            <Button className="flex-1" onClick={submitAdd} loading={saving} loadingLabel="Adding…">
               Add product
-            </button>
+            </Button>
           </div>
-        </Modal>
+        </Dialog>
       ) : null}
 
       {editing ? (
-        <Modal title={`Edit ${editing.name}`} onClose={closeEdit}>
+        <Dialog
+          open={editing !== null}
+          title={`Edit ${editing.name}`}
+          onClose={closeEdit}
+          closeOnBackdrop={false}
+          className="max-w-lg"
+        >
           {detailError ? (
-            <p className="mt-4 text-sm font-semibold text-red-600">{detailError}</p>
+            <Notice tone="error" className="mt-4">
+              {detailError}
+            </Notice>
           ) : null}
           {success ? (
-            <p className="mt-4 text-sm font-semibold text-emerald-600">{success}</p>
+            <Notice tone="success" className="mt-4">
+              {success}
+            </Notice>
           ) : null}
           {editLoading ? (
-            <p className="mt-4 text-sm text-slate-500">Loading product…</p>
+            <LoadingState message="Loading product…" className="mt-4" />
           ) : detail ? (
             <>
               <div className="mt-4 space-y-3">
@@ -897,22 +842,22 @@ export default function AdminCataloguePage(): JSX.Element {
                 </label>
               </div>
               <div className="mt-6 flex gap-3">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  className="flex-1"
                   onClick={closeEdit}
                   disabled={saving || imageBusy}
-                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
                 >
                   Cancel
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  className="flex-1"
                   onClick={submitEdit}
-                  disabled={saving}
-                  className="flex-1 rounded-lg bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange/90 disabled:opacity-50"
+                  loading={saving}
+                  loadingLabel="Saving…"
                 >
                   Save changes
-                </button>
+                </Button>
               </div>
 
               <div className="mt-6 border-t border-slate-200 pt-4">
@@ -946,43 +891,43 @@ export default function AdminCataloguePage(): JSX.Element {
                           ) : null}
                         </div>
                         <div className="flex shrink-0 flex-wrap items-center gap-2">
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => submitReorderImage(image, -1)}
                             disabled={imageBusy || index === 0}
-                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-40"
                           >
                             Move up
-                          </button>
-                          <button
-                            type="button"
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => submitReorderImage(image, 1)}
                             disabled={
                               imageBusy || index === sortImagesByOrder(detail.images).length - 1
                             }
-                            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-40"
                           >
                             Move down
-                          </button>
+                          </Button>
                           {!image.isPrimary ? (
-                            <button
-                              type="button"
+                            <Button
+                              variant="secondary"
+                              size="sm"
                               onClick={() => submitMakePrimary(image)}
                               disabled={imageBusy}
-                              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
                             >
                               Make primary
-                            </button>
+                            </Button>
                           ) : null}
-                          <button
-                            type="button"
+                          <Button
+                            variant="dangerOutline"
+                            size="sm"
                             onClick={() => setRemoveImage(image)}
                             disabled={imageBusy}
-                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
                           >
                             <TrashIcon className="h-3.5 w-3.5" />
                             Remove
-                          </button>
+                          </Button>
                         </div>
                       </li>
                     ))}
@@ -1005,14 +950,14 @@ export default function AdminCataloguePage(): JSX.Element {
                         setImageFile(event.target.files?.[0] ?? null);
                       }}
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={() => imageFileInputRef.current?.click()}
                       disabled={imageBusy}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
                     >
                       {imageFile ? `Selected: ${imageFile.name}` : 'Choose image…'}
-                    </button>
+                    </Button>
                     <input
                       value={imageAlt}
                       onChange={(event) => setImageAlt(event.target.value)}
@@ -1020,14 +965,16 @@ export default function AdminCataloguePage(): JSX.Element {
                       aria-label="Alt text"
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="accent"
+                      size="sm"
                       onClick={submitUploadImage}
-                      disabled={imageBusy || !imageFile}
-                      className="rounded-lg bg-brand-teal px-3 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-50"
+                      loading={imageBusy}
+                      loadingLabel="Uploading…"
+                      disabled={!imageFile}
                     >
                       Upload image
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -1035,19 +982,26 @@ export default function AdminCataloguePage(): JSX.Element {
           ) : (
             <p className="mt-4 text-sm text-slate-500">Could not load the product.</p>
           )}
-        </Modal>
+        </Dialog>
       ) : null}
 
       {categoryModal ? (
-        <Modal
+        <Dialog
+          open={categoryModal !== null}
           title={
             categoryModal.mode === 'create' ? 'Add category' : `Edit ${categoryModal.category.name}`
           }
           onClose={() => {
             if (!categorySaving && !categoryImageBusy) setCategoryModal(null);
           }}
+          closeOnBackdrop={false}
+          className="max-w-lg"
         >
-          {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
+          {error ? (
+            <Notice tone="error" className="mt-4">
+              {error}
+            </Notice>
+          ) : null}
           <div className="mt-4 space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
               Name
@@ -1102,15 +1056,15 @@ export default function AdminCataloguePage(): JSX.Element {
                       alt={categoryModal.category.name}
                       className="h-16 w-16 shrink-0 rounded-lg object-cover"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="dangerOutline"
+                      size="sm"
                       onClick={submitRemoveCategoryImage}
                       disabled={categoryImageBusy}
-                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       <TrashIcon className="h-4 w-4" />
                       Remove image
-                    </button>
+                    </Button>
                   </>
                 ) : (
                   <p className="text-sm text-slate-500">No image yet.</p>
@@ -1127,46 +1081,49 @@ export default function AdminCataloguePage(): JSX.Element {
                     setCategoryImageFile(event.target.files?.[0] ?? null);
                   }}
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => categoryFileInputRef.current?.click()}
                   disabled={categoryImageBusy}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
                 >
                   {categoryImageFile
                     ? `Selected: ${categoryImageFile.name}`
                     : 'Upload / replace image…'}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="accent"
+                  size="sm"
                   onClick={submitCategoryImage}
-                  disabled={categoryImageBusy || !categoryImageFile}
-                  className="rounded-lg bg-brand-teal px-3 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-50"
+                  loading={categoryImageBusy}
+                  loadingLabel="Uploading…"
+                  disabled={!categoryImageFile}
                 >
                   Upload image
-                </button>
+                </Button>
               </div>
             </div>
           ) : null}
           <div className="mt-6 flex gap-3">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              className="flex-1"
               onClick={() => setCategoryModal(null)}
               disabled={categorySaving || categoryImageBusy}
-              className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-teal disabled:opacity-50"
             >
               Cancel
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              className="flex-1"
               onClick={submitCategory}
-              disabled={categorySaving || categoryImageBusy}
-              className="flex-1 rounded-lg bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange/90 disabled:opacity-50"
+              loading={categorySaving}
+              loadingLabel="Saving…"
+              disabled={categoryImageBusy}
             >
               {categoryModal.mode === 'create' ? 'Add category' : 'Save changes'}
-            </button>
+            </Button>
           </div>
-        </Modal>
+        </Dialog>
       ) : null}
 
       <ConfirmDialog

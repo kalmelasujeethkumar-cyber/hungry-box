@@ -12,9 +12,13 @@ const MOCK_REALTIME = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/client', () => MOCK_APIS);
-vi.mock('../delivery/use-delivery-realtime', () => ({
-  useDeliveryRealtime: () => MOCK_REALTIME.state,
-}));
+vi.mock('../delivery/use-delivery-realtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../delivery/use-delivery-realtime')>();
+  return {
+    ...actual,
+    useDeliveryRealtime: () => MOCK_REALTIME.state,
+  };
+});
 
 const REALTIME_EVENT: DeliveryRealtimeEvent = {
   type: 'delivery.assignment.created',

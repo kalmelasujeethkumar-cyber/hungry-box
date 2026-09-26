@@ -315,7 +315,7 @@ describe('admin overview', () => {
     );
     expect(screen.getByText('Cash collected · 3 orders')).toBeInTheDocument();
     expect(screen.getByText('₹600')).toBeInTheDocument();
-    expect(screen.getByText('Cash pending · 1 orders')).toBeInTheDocument();
+    expect(screen.getByText('Cash pending · 1 order')).toBeInTheDocument();
     expect(screen.getByText('₹200')).toBeInTheDocument();
   });
 });
@@ -538,7 +538,7 @@ describe('admin audit log', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('branch updated')).toBeInTheDocument();
+    expect(await screen.findByText('Branch updated')).toBeInTheDocument();
     expect(screen.getByText('Branch delivery radius updated')).toBeInTheDocument();
     expect(screen.getByText(/branch br-guntur/)).toBeInTheDocument();
     expect(screen.getByText('Page 1 of 1 · 1 events')).toBeInTheDocument();
@@ -555,7 +555,7 @@ describe('admin audit log', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText('branch updated');
+    await screen.findByText('Branch updated');
     await user.click(screen.getByRole('button', { name: 'Export CSV' }));
 
     await waitFor(() =>

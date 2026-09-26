@@ -73,8 +73,8 @@ export default function ManagerSettingsPage(): JSX.Element {
               className="mt-1"
             />
             <p className="mt-2 text-xs text-slate-500">
-              Orders are only accepted from addresses inside this radius. The radius is stored as
-              branch configuration, not a constant.
+              Orders are only accepted from addresses inside this radius, measured from the branch
+              location.
             </p>
             <TextareaField
               label="Branch address"
@@ -86,7 +86,13 @@ export default function ManagerSettingsPage(): JSX.Element {
             />
             {error ? <Notice tone="error">{error}</Notice> : null}
             {notice ? <Notice tone="success">{notice}</Notice> : null}
-            <Button onClick={save} disabled={busy} loading={busy} loadingLabel="Saving…" className="mt-5">
+            <Button
+              onClick={save}
+              disabled={busy}
+              loading={busy}
+              loadingLabel="Saving…"
+              className="mt-5"
+            >
               Save settings
             </Button>
           </section>

@@ -5,20 +5,16 @@ import type { OrderStatus, OrderSummaryDto } from '@hungrybox/shared';
 import { branchOrdersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import EmptyState from '../../components/EmptyState';
+import { FilterChips } from '../../components/FilterChips';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
 import { PackageIcon } from '../../features/storefront/components/icons';
-import { ORDER_STATUS_LABELS } from '../../features/orders/order-status';
+import { ORDER_STATUS_LABELS, ORDER_STATUS_TONES } from '../../features/orders/order-status';
 import { ORDER_STATUS_FILTERS } from '../../features/manager/manager-orders';
+import { formatPlacedAt } from '../../lib/format';
 import { formatPaise } from '../../lib/money';
 import ManagerLayout from './ManagerLayout';
-
-function formatPlacedAt(iso: string): string {
-  return new Date(iso).toLocaleString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 export default function ManagerOrdersPage(): JSX.Element {
   const { token } = useAuth();
@@ -56,27 +52,22 @@ export default function ManagerOrdersPage(): JSX.Element {
 
   return (
     <ManagerLayout kicker="Branch operations" title="Orders">
-      <div className="mt-6 flex flex-wrap gap-2">
-        {ORDER_STATUS_FILTERS.map((option) => (
-          <button
-            key={option.label}
-            type="button"
-            onClick={() => applyStatus(option.value)}
-            className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
-              status === option.value
-                ? 'bg-brand-teal text-white'
-                : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-brand-sky/40'
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+      <FilterChips
+        className="mt-6"
+        options={ORDER_STATUS_FILTERS}
+        value={status}
+        onChange={applyStatus}
+        ariaLabel="Filter orders by status"
+      />
 
-      {error ? <p className="mt-6 text-sm font-semibold text-red-600">{error}</p> : null}
+      {error ? (
+        <Notice tone="error" className="mt-6">
+          {error}
+        </Notice>
+      ) : null}
 
       {loading ? (
-        <p className="mt-8 text-sm text-slate-500">Loading orders…</p>
+        <LoadingState message="Loading orders…" className="mt-8" />
       ) : orders.length === 0 ? (
         <div className="mt-8">
           <EmptyState
@@ -102,9 +93,10 @@ export default function ManagerOrdersPage(): JSX.Element {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-bold text-brand-navy">{formatPaise(order.totalMinor)}</span>
-                  <span className="rounded-full bg-brand-sky/60 px-2.5 py-1 text-xs font-bold text-brand-navy">
-                    {ORDER_STATUS_LABELS[order.status]}
-                  </span>
+                  <StatusBadge
+                    label={ORDER_STATUS_LABELS[order.status]}
+                    tone={ORDER_STATUS_TONES[order.status]}
+                  />
                 </div>
               </Link>
             </li>

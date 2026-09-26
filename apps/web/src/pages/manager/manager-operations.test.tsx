@@ -398,6 +398,41 @@ describe('manager catalogue', () => {
     );
   });
 
+  it('blocks saving when the discount is higher than the price', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ManagerCatalogPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Chicken Biryani');
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+
+    const dialog = await screen.findByRole('dialog');
+    const priceInput = within(dialog).getByLabelText('Price (₹)');
+    const discountInput = within(dialog).getByLabelText('Discount (₹)');
+
+    await user.clear(discountInput);
+    await user.type(discountInput, '400');
+
+    expect(await screen.findByText('Discount cannot exceed price.')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(MOCK_APIS.branchProductsApi.update).not.toHaveBeenCalled();
+
+    await user.clear(priceInput);
+    await user.type(priceInput, '500');
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.branchProductsApi.update).toHaveBeenCalledWith(
+        'bp-1',
+        expect.objectContaining({ priceMinor: 50000, discountMinor: 40000 }),
+        'test-token',
+      ),
+    );
+  });
+
   it('deactivates a product after confirmation', async () => {
     MOCK_APIS.branchProductsApi.deactivate.mockResolvedValue(
       branchProduct({ status: 'INACTIVE', isAvailable: false }),

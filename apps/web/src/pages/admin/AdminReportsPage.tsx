@@ -22,6 +22,7 @@ import type {
 import { adminApi, ApiError, branchesApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import EmptyState from '../../components/EmptyState';
+import { Button } from '../../components/Button';
 import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -237,14 +238,15 @@ export default function AdminReportsPage(): JSX.Element {
             ))}
           </select>
         </label>
-        <button
-          type="button"
+        <Button
+          variant="accent"
+          size="sm"
           onClick={exportCsv}
-          disabled={csvBusy}
-          className="rounded-lg bg-brand-teal px-3 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-50"
+          loading={csvBusy}
+          loadingLabel="Exporting…"
         >
-          {csvBusy ? 'Exporting…' : 'Download orders CSV'}
-        </button>
+          Download orders CSV
+        </Button>
       </div>
 
       {exportError ? <Notice tone="error">{exportError}</Notice> : null}

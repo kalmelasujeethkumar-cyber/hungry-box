@@ -2,7 +2,7 @@ import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
 import type { DeliveryTrackingDto, OrderStatus } from '@hungrybox/shared';
 import { deliveryTrackingApi } from '../../api/client';
-import { useDeliveryRealtime } from '../delivery/use-delivery-realtime';
+import { RealtimePill, useDeliveryRealtime } from '../delivery/use-delivery-realtime';
 import { ASSIGNMENT_STATUS_LABELS } from '../delivery/delivery-status';
 import { LocationIcon, PackageIcon } from '../storefront/components/icons';
 
@@ -100,23 +100,7 @@ export default function DeliveryTrackingSection({
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
           Delivery status
         </h2>
-        <span
-          className={
-            connected
-              ? 'inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700'
-              : 'inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700'
-          }
-        >
-          <span
-            className={
-              connected
-                ? 'h-1.5 w-1.5 rounded-full bg-emerald-600'
-                : 'h-1.5 w-1.5 rounded-full bg-amber-500'
-            }
-            aria-hidden="true"
-          />
-          {connected ? 'Live' : 'Syncing'}
-        </span>
+        <RealtimePill connected={connected} />
       </div>
 
       {!tracking.trackingAvailable || !partner ? (

@@ -222,7 +222,8 @@ export default function AdminOverviewPage(): JSX.Element {
                 {formatPaise(dashboard.cod.collectedMinor)}
               </p>
               <p className="mt-1 text-sm font-semibold text-slate-600">
-                Cash collected · {dashboard.cod.collectedCount} orders
+                Cash collected · {dashboard.cod.collectedCount}{' '}
+                {dashboard.cod.collectedCount === 1 ? 'order' : 'orders'}
               </p>
             </div>
             <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
@@ -230,7 +231,8 @@ export default function AdminOverviewPage(): JSX.Element {
                 {formatPaise(dashboard.cod.uncollectedMinor)}
               </p>
               <p className="mt-1 text-sm font-semibold text-slate-600">
-                Cash pending · {dashboard.cod.uncollectedCount} orders
+                Cash pending · {dashboard.cod.uncollectedCount}{' '}
+                {dashboard.cod.uncollectedCount === 1 ? 'order' : 'orders'}
               </p>
             </div>
           </div>

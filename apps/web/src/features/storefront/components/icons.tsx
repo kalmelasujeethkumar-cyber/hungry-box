@@ -61,14 +61,6 @@ export function PlusIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
   );
 }
 
-export function MinusIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
-  return (
-    <svg {...baseProps(props)}>
-      <path d="M5 12h14" />
-    </svg>
-  );
-}
-
 export function TrashIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
   return (
     <svg {...baseProps(props)}>

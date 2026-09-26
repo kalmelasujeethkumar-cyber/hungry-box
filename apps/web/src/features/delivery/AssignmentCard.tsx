@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
 import type { DeliveryAssignmentDto, DeliveryAssignmentListItemDto } from '@hungrybox/shared';
-import { StatusBadge, badgeToneClass } from '../../components/StatusBadge';
+import { StatusBadge } from '../../components/StatusBadge';
 import { formatDateTime } from '../../lib/format';
 import { formatPaise } from '../../lib/money';
 import {
@@ -11,10 +11,6 @@ import {
 import type { BadgeTone } from '../../components/StatusBadge';
 
 const TONE_FOR_STATUS: Record<string, BadgeTone> = ASSIGNMENT_STATUS_TONES;
-
-export function statusBadgeClass(status: string): string {
-  return badgeToneClass[TONE_FOR_STATUS[status] ?? 'neutral'];
-}
 
 function statusTone(status: string): BadgeTone {
   return TONE_FOR_STATUS[status] ?? 'neutral';
@@ -35,11 +31,12 @@ export function AssignmentCard({ assignment }: { assignment: DeliveryAssignmentD
           <p className="font-extrabold tracking-tight text-brand-navy">
             {assignment.order.orderNumber}
           </p>
-          <p className="text-xs text-slate-500">
-            Assigned {formatDateTime(assignment.assignedAt)}
-          </p>
+          <p className="text-xs text-slate-500">Assigned {formatDateTime(assignment.assignedAt)}</p>
         </div>
-        <StatusBadge label={ASSIGNMENT_STATUS_LABELS[assignment.status]} tone={statusTone(assignment.status)} />
+        <StatusBadge
+          label={ASSIGNMENT_STATUS_LABELS[assignment.status]}
+          tone={statusTone(assignment.status)}
+        />
       </header>
       <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
         <div>
@@ -50,7 +47,9 @@ export function AssignmentCard({ assignment }: { assignment: DeliveryAssignmentD
         </div>
         <div>
           <dt className="text-xs font-semibold uppercase text-slate-500">Order total</dt>
-          <dd className="mt-0.5 font-bold text-slate-900">{formatPaise(assignment.order.totalMinor)}</dd>
+          <dd className="mt-0.5 font-bold text-slate-900">
+            {formatPaise(assignment.order.totalMinor)}
+          </dd>
           {assignment.order.paymentMethod === 'COD' ? (
             <p
               className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${
@@ -90,8 +89,11 @@ export function AssignmentListItemCard({
             {formatDateTime(assignment.assignedAt)}
           </p>
         </div>
-        <StatusBadge label={ASSIGNMENT_STATUS_LABELS[assignment.status]} tone={statusTone(assignment.status)} />
-        </div>
+        <StatusBadge
+          label={ASSIGNMENT_STATUS_LABELS[assignment.status]}
+          tone={statusTone(assignment.status)}
+        />
+      </div>
       <p className="mt-2 text-sm font-bold text-slate-900">{formatPaise(assignment.totalMinor)}</p>
     </article>
   );

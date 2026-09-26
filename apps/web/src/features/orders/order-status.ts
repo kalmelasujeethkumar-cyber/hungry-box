@@ -10,8 +10,6 @@ export const ORDER_STATUS_STEPS = [
   'DELIVERED',
 ] as const;
 
-export type OrderStatusStep = (typeof ORDER_STATUS_STEPS)[number];
-
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   PLACED: 'Order placed',
   CONFIRMED: 'Confirmed',

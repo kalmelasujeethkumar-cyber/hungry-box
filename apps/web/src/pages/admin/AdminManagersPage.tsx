@@ -54,16 +54,6 @@ function userActions(user: UserListItemDto): UserAction[] {
   return [{ label: 'Activate', next: 'ACTIVE' }];
 }
 
-function actionButtonClass(danger: boolean | undefined, next: ManagerStatus): string {
-  if (danger) {
-    return 'rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50';
-  }
-  if (next === 'ACTIVE') {
-    return 'rounded-lg border border-brand-teal px-3 py-1.5 text-xs font-semibold text-brand-teal hover:bg-brand-sky/40';
-  }
-  return 'rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-brand-teal hover:text-brand-teal';
-}
-
 function statusActionDescription(user: UserListItemDto, next: ManagerStatus): string {
   const name = user.name ?? user.loginId;
   if (next === 'SUSPENDED') {
@@ -310,7 +300,10 @@ export default function AdminManagersPage(): JSX.Element {
                       {manager.branchName}
                     </span>
                   ) : null}
-                  <StatusBadge label={userStatusLabel[manager.status]} tone={userStatusTone[manager.status]} />
+                  <StatusBadge
+                    label={userStatusLabel[manager.status]}
+                    tone={userStatusTone[manager.status]}
+                  />
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -319,14 +312,20 @@ export default function AdminManagersPage(): JSX.Element {
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {userActions(manager).map((action) => (
-                    <button
+                    <Button
                       key={action.label}
-                      type="button"
+                      size="sm"
+                      variant={
+                        action.danger
+                          ? 'dangerOutline'
+                          : action.next === 'ACTIVE'
+                            ? 'accentOutline'
+                            : 'secondary'
+                      }
                       onClick={() => requestAction(manager, action)}
-                      className={actionButtonClass(action.danger, action.next)}
                     >
                       {action.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -359,9 +358,7 @@ export default function AdminManagersPage(): JSX.Element {
 
       <ConfirmDialog
         open={pendingAction !== null}
-        title={
-          pendingAction ? `${userStatusLabel[pendingAction.next]} manager?` : 'Update manager'
-        }
+        title={pendingAction ? `${userStatusLabel[pendingAction.next]} manager?` : 'Update manager'}
         description={
           pendingAction ? statusActionDescription(pendingAction.user, pendingAction.next) : ''
         }
@@ -449,9 +446,7 @@ export default function AdminManagersPage(): JSX.Element {
             <Button variant="secondary" size="sm" onClick={copyPassword}>
               Copy password
             </Button>
-            {copied ? (
-              <span className="text-sm font-semibold text-emerald-600">Copied</span>
-            ) : null}
+            {copied ? <span className="text-sm font-semibold text-emerald-600">Copied</span> : null}
           </div>
           <Button className="mt-5 w-full" onClick={closeCreated}>
             Done

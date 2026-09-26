@@ -44,6 +44,7 @@ const MOCK_APIS = vi.hoisted(() => ({
     assign: vi.fn(),
     cancelAssignment: vi.fn(),
   },
+  branchSettingsApi: { get: vi.fn() },
   branchKycApi: { get: vi.fn(), documentAccess: vi.fn(), review: vi.fn() },
   ApiError: class ApiError extends Error {
     readonly status: number;
@@ -139,10 +140,38 @@ const PARTNER_DETAIL: DeliveryPartnerProfileDto = {
   wentOnlineAt: null,
   activeDeliveryCount: 0,
   documents: [
-    { id: 'doc-a', type: 'AADHAAR', documentReference: 'XXXX XXXX 1234', status: 'UPLOADED', verificationNote: null, verifiedAt: null },
-    { id: 'doc-ap', type: 'ADDRESS_PROOF', documentReference: 'XXXX XXXX 5678', status: 'UPLOADED', verificationNote: null, verifiedAt: null },
-    { id: 'doc-p', type: 'PAN', documentReference: 'XXXXX1234X', status: 'UPLOADED', verificationNote: null, verifiedAt: null },
-    { id: 'doc-l', type: 'DRIVING_LICENSE', documentReference: 'XXXX XXXX 2025', status: 'UPLOADED', verificationNote: null, verifiedAt: null },
+    {
+      id: 'doc-a',
+      type: 'AADHAAR',
+      documentReference: 'XXXX XXXX 1234',
+      status: 'UPLOADED',
+      verificationNote: null,
+      verifiedAt: null,
+    },
+    {
+      id: 'doc-ap',
+      type: 'ADDRESS_PROOF',
+      documentReference: 'XXXX XXXX 5678',
+      status: 'UPLOADED',
+      verificationNote: null,
+      verifiedAt: null,
+    },
+    {
+      id: 'doc-p',
+      type: 'PAN',
+      documentReference: 'XXXXX1234X',
+      status: 'UPLOADED',
+      verificationNote: null,
+      verifiedAt: null,
+    },
+    {
+      id: 'doc-l',
+      type: 'DRIVING_LICENSE',
+      documentReference: 'XXXX XXXX 2025',
+      status: 'UPLOADED',
+      verificationNote: null,
+      verifiedAt: null,
+    },
   ],
 };
 
@@ -181,8 +210,20 @@ const KYC_STATUS = {
   branchName: 'Guntur',
   overallState: 'AWAITING_REVIEW' as const,
   documents: [
-    { type: 'AADHAAR' as const, status: 'UPLOADED' as const, verificationNote: null, verifiedAt: null, canReupload: true },
-    { type: 'DRIVING_LICENSE' as const, status: 'UPLOADED' as const, verificationNote: null, verifiedAt: null, canReupload: true },
+    {
+      type: 'AADHAAR' as const,
+      status: 'UPLOADED' as const,
+      verificationNote: null,
+      verifiedAt: null,
+      canReupload: true,
+    },
+    {
+      type: 'DRIVING_LICENSE' as const,
+      status: 'UPLOADED' as const,
+      verificationNote: null,
+      verifiedAt: null,
+      canReupload: true,
+    },
   ],
 };
 
@@ -193,6 +234,7 @@ beforeEach(() => {
   MOCK_APIS.branchDeliveryApi.listAssignments.mockResolvedValue(ASSIGNMENT_LIST);
   MOCK_APIS.branchDeliveryApi.candidates.mockResolvedValue(CANDIDATES);
   MOCK_APIS.branchKycApi.get.mockResolvedValue(KYC_STATUS);
+  MOCK_APIS.branchSettingsApi.get.mockResolvedValue(BRANCH);
   MOCK_APIS.branchOrdersApi.list.mockResolvedValue([
     {
       id: 'ord-9',

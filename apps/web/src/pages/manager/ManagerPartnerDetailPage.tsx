@@ -5,6 +5,7 @@ import type { DeliveryPartnerDocumentDto, DeliveryPartnerProfileDto } from '@hun
 import { branchDeliveryApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import {
+  AVAILABILITY_LABELS,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
   PARTNER_STATUS_LABELS,
@@ -13,6 +14,10 @@ import {
 } from '../../features/delivery/delivery-status';
 import ConfirmDialog from '../../features/storefront/components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
+import { Button } from '../../components/Button';
+import { LoadingState } from '../../components/LoadingState';
+import { Notice } from '../../components/Notice';
+import { StatusBadge } from '../../components/StatusBadge';
 import { UserIcon } from '../../features/storefront/components/icons';
 import ManagerKycCard from '../../features/delivery/ManagerKycCard';
 import { formatDateOnly } from '../../lib/format';
@@ -37,7 +42,10 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
   const [profile, setProfile] = useState<DeliveryPartnerProfileDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [dialog, setDialog] = useState<{ kind: 'reject-profile' | 'reject-doc'; documentId?: string } | null>(null);
+  const [dialog, setDialog] = useState<{
+    kind: 'reject-profile' | 'reject-doc';
+    documentId?: string;
+  } | null>(null);
   const [reason, setReason] = useState('');
 
   const refresh = useCallback(() => {
@@ -105,14 +113,18 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
   if (error && !profile) {
     return (
       <ManagerLayout kicker="Branch operations" title="Delivery partner">
-        <EmptyState icon={<UserIcon className="h-8 w-8" />} title="Partner not found" message={error} />
+        <EmptyState
+          icon={<UserIcon className="h-8 w-8" />}
+          title="Partner not found"
+          message={error}
+        />
       </ManagerLayout>
     );
   }
   if (!profile) {
     return (
       <ManagerLayout kicker="Branch operations" title="Delivery partner">
-        <p className="py-16 text-center text-sm text-slate-500">Loading partner…</p>
+        <LoadingState message="Loading partner…" className="mt-16" />
       </ManagerLayout>
     );
   }
@@ -145,9 +157,9 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
       </div>
 
       {error ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <Notice tone="error" className="mt-4">
           {error}
-        </div>
+        </Notice>
       ) : null}
 
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
@@ -156,92 +168,83 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
             <p className="text-sm font-bold text-brand-navy">Status</p>
             <p className="text-xs text-slate-500">
               {PARTNER_STATUS_LABELS[profile.status]}
-              {profile.status === 'ACTIVE' ? ` · ${profile.availability}` : ''}
+              {profile.status === 'ACTIVE' ? ` · ${AVAILABILITY_LABELS[profile.availability]}` : ''}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {profile.status === 'PENDING_VERIFICATION' ? (
-              <button
-                type="button"
+              <Button
+                variant="accent"
                 disabled={busy}
                 onClick={() => runVerify({ action: 'BEGIN_REVIEW' })}
-                className="rounded-xl bg-brand-teal px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
               >
                 Start document review
-              </button>
+              </Button>
             ) : null}
             {profile.status === 'DOCUMENT_REVIEW' ? (
               <>
-                <button
-                  type="button"
+                <Button
+                  variant="accent"
                   disabled={busy}
                   onClick={() => runVerify({ action: 'APPROVE' })}
-                  className="rounded-xl bg-brand-teal px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
                 >
-                  Approve & verify
-                </button>
-                <button
-                  type="button"
+                  Approve &amp; verify
+                </Button>
+                <Button
+                  variant="dangerOutline"
                   disabled={busy}
                   onClick={() => {
                     setDialog({ kind: 'reject-profile' });
                     setReason('');
                   }}
-                  className="rounded-xl border border-red-300 px-4 py-2 text-sm font-bold text-red-600 disabled:opacity-50"
                 >
                   Reject profile
-                </button>
+                </Button>
               </>
             ) : null}
-            {(profile.status === 'VERIFIED' || profile.status === 'INACTIVE' || profile.status === 'SUSPENDED') ? (
-              <button
-                type="button"
+            {profile.status === 'VERIFIED' ||
+            profile.status === 'INACTIVE' ||
+            profile.status === 'SUSPENDED' ? (
+              <Button
+                variant="success"
                 disabled={busy}
                 onClick={() => runVerify({ action: 'ACTIVATE' })}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
               >
                 Activate
-              </button>
+              </Button>
             ) : null}
             {profile.status === 'ACTIVE' ? (
               <>
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
                   disabled={busy}
                   onClick={() => runSetStatus('INACTIVE')}
-                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 disabled:opacity-50"
                 >
                   Deactivate
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="dangerOutline"
                   disabled={busy}
                   onClick={() => runSetStatus('SUSPENDED')}
-                  className="rounded-xl border border-red-300 px-4 py-2 text-sm font-bold text-red-600 disabled:opacity-50"
                 >
                   Suspend
-                </button>
+                </Button>
               </>
             ) : null}
           </div>
         </div>
         {profile.status === 'DOCUMENT_REVIEW' ? (
           <div className="mt-3">
-            <p
-              className={
-                requiredVerified
-                  ? 'rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700'
-                  : hasRejectedRequired
-                    ? 'rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700'
-                    : 'rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700'
-              }
+            <Notice
+              tone={requiredVerified ? 'success' : hasRejectedRequired ? 'error' : 'warning'}
+              className="text-xs"
             >
               {requiredVerified
                 ? 'All required documents verified — ready to approve.'
                 : hasRejectedRequired
                   ? 'A required document was rejected. Re-upload or reject the profile.'
                   : `Awaiting ${REQUIRED_VERIFICATION_DOCUMENTS.length - verifiedCount} more required documents.`}
-            </p>
+            </Notice>
           </div>
         ) : null}
       </div>
@@ -252,20 +255,44 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
           <dl className="mt-3 grid gap-3 sm:grid-cols-2">
             <Field label="Mobile" value={profile.mobile} />
             <Field label="Email" value={profile.email} />
-            <Field label="Date of birth" value={profile.dateOfBirth ? formatDateOnly(profile.dateOfBirth) : null} />
+            <Field
+              label="Date of birth"
+              value={profile.dateOfBirth ? formatDateOnly(profile.dateOfBirth) : null}
+            />
             <Field label="Gender" value={profile.gender} />
-            <Field label="Emergency contact" value={profile.emergencyContactName ? `${profile.emergencyContactName} ${profile.emergencyContactPhone ?? ''}` : null} />
-            <Field label="Partner type" value={profile.partnerType ? PARTNER_TYPE_LABELS[profile.partnerType] : null} />
-            <Field label="Address" value={[profile.houseFlat, profile.streetArea, profile.city].filter(Boolean).join(', ') || null} />
+            <Field
+              label="Emergency contact"
+              value={
+                profile.emergencyContactName
+                  ? `${profile.emergencyContactName} ${profile.emergencyContactPhone ?? ''}`
+                  : null
+              }
+            />
+            <Field
+              label="Partner type"
+              value={profile.partnerType ? PARTNER_TYPE_LABELS[profile.partnerType] : null}
+            />
+            <Field
+              label="Address"
+              value={
+                [profile.houseFlat, profile.streetArea, profile.city].filter(Boolean).join(', ') ||
+                null
+              }
+            />
           </dl>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Vehicle & payout</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+            Vehicle & payout
+          </h2>
           <dl className="mt-3 grid gap-3 sm:grid-cols-2">
             <Field label="Vehicle type" value={profile.vehicleType} />
             <Field label="Registration" value={profile.vehicleNumber} />
-            <Field label="Brand / model" value={[profile.vehicleBrand, profile.vehicleModel].filter(Boolean).join(' ') || null} />
+            <Field
+              label="Brand / model"
+              value={[profile.vehicleBrand, profile.vehicleModel].filter(Boolean).join(' ') || null}
+            />
             <Field label="Driving licence" value={profile.drivingLicenceNumber} />
             <Field label="Bank account" value={profile.accountNumberMasked} />
             <Field label="IFSC" value={profile.ifsc} />
@@ -280,7 +307,10 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
         </h2>
         <ul className="mt-3 divide-y divide-slate-100">
           {profile.documents.map((doc) => (
-            <li key={doc.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <li
+              key={doc.id}
+              className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+            >
               <div>
                 <p className="text-sm font-semibold text-slate-800">
                   {DOCUMENT_TYPE_LABELS[doc.type]}
@@ -296,39 +326,38 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                <StatusBadge
+                  label={DOCUMENT_STATUS_LABELS[doc.status]}
+                  tone={
                     doc.status === 'VERIFIED'
-                      ? 'bg-emerald-100 text-emerald-800'
+                      ? 'success'
                       : doc.status === 'REJECTED'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {DOCUMENT_STATUS_LABELS[doc.status]}
-                </span>
+                        ? 'danger'
+                        : 'neutral'
+                  }
+                />
                 {verifyable(doc) ? (
-                  <button
-                    type="button"
+                  <Button
+                    variant="accent"
+                    size="sm"
                     disabled={busy}
                     onClick={() => runReviewDoc(doc.id, 'APPROVE')}
-                    className="rounded-lg bg-brand-teal px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
                   >
                     Approve
-                  </button>
+                  </Button>
                 ) : null}
                 {verifyable(doc) ? (
-                  <button
-                    type="button"
+                  <Button
+                    variant="dangerOutline"
+                    size="sm"
                     disabled={busy}
                     onClick={() => {
                       setDialog({ kind: 'reject-doc', documentId: doc.id });
                       setReason('');
                     }}
-                    className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-bold text-red-600 disabled:opacity-50"
                   >
                     Reject
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             </li>

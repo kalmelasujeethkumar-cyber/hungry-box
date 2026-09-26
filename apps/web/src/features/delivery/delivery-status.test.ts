@@ -8,7 +8,6 @@ import {
   KYC_DOCUMENT_LABELS,
   KYC_DOCUMENT_STATUS_LABELS,
   KYC_DOCUMENT_TYPES,
-  KYC_OVERALL_CHIP_CLASSES,
   KYC_OVERALL_LABELS,
   PARTNER_STATUS_LABELS,
   PARTNER_TYPE_LABELS,
@@ -19,7 +18,15 @@ import {
 describe('delivery-status runtime labels', () => {
   it('provides presentational labels for every assignment status', () => {
     expect(Object.keys(ASSIGNMENT_STATUS_LABELS).sort()).toEqual(
-      ['ASSIGNED', 'ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'REJECTED', 'CANCELLED'].sort(),
+      [
+        'ASSIGNED',
+        'ACCEPTED',
+        'PICKED_UP',
+        'OUT_FOR_DELIVERY',
+        'DELIVERED',
+        'REJECTED',
+        'CANCELLED',
+      ].sort(),
     );
     expect(ASSIGNMENT_STATUS_LABELS.ASSIGNED).toContain('assigned');
   });
@@ -43,11 +50,15 @@ describe('delivery-status runtime labels', () => {
     expect(KYC_DOCUMENT_STATUS_LABELS.PENDING).toBe('Not uploaded');
     expect(KYC_OVERALL_LABELS.INCOMPLETE).toBe('KYC incomplete');
     expect(KYC_OVERALL_LABELS.VERIFIED).toBe('KYC complete');
-    expect(KYC_OVERALL_CHIP_CLASSES.ACTION_REQUIRED).toBe('bg-rose-100 text-rose-700');
   });
 
   it('marks a status as active only within the live assignment window', () => {
-    expect(ASSIGNMENT_ACTIVE_STATUSES).toEqual(['ASSIGNED', 'ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY']);
+    expect(ASSIGNMENT_ACTIVE_STATUSES).toEqual([
+      'ASSIGNED',
+      'ACCEPTED',
+      'PICKED_UP',
+      'OUT_FOR_DELIVERY',
+    ]);
     expect(isActiveAssignmentStatus('ACCEPTED')).toBe(true);
     expect(isActiveAssignmentStatus('OUT_FOR_DELIVERY')).toBe(true);
     expect(isActiveAssignmentStatus('DELIVERED')).toBe(false);

@@ -1,8 +1,6 @@
 import type { BadgeTone } from './StatusBadge';
 import type { BranchStatus } from '@hungrybox/shared';
-import type { BranchProductStatus } from '@hungrybox/shared';
 import type { CatalogStatus } from '@hungrybox/shared';
-import type { ManagerStatus } from '@hungrybox/shared';
 import type { UserStatus } from '@hungrybox/shared';
 
 export const branchStatusLabel: Record<BranchStatus, string> = {
@@ -29,28 +27,6 @@ export const userStatusTone: Record<UserStatus, BadgeTone> = {
   INACTIVE: 'neutral',
   SUSPENDED: 'danger',
   PENDING: 'warning',
-};
-
-export const managerStatusLabel: Record<ManagerStatus, string> = {
-  ACTIVE: 'Active',
-  INACTIVE: 'Inactive',
-  SUSPENDED: 'Suspended',
-};
-
-export const managerStatusTone: Record<ManagerStatus, BadgeTone> = {
-  ACTIVE: 'success',
-  INACTIVE: 'neutral',
-  SUSPENDED: 'danger',
-};
-
-export const productStatusLabel: Record<BranchProductStatus, string> = {
-  ACTIVE: 'Active',
-  INACTIVE: 'Inactive',
-};
-
-export const productStatusTone: Record<BranchProductStatus, BadgeTone> = {
-  ACTIVE: 'success',
-  INACTIVE: 'neutral',
 };
 
 export const catalogStatusLabel: Record<CatalogStatus, string> = {

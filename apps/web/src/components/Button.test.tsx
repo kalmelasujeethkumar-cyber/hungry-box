@@ -28,12 +28,23 @@ describe('Button', () => {
     );
     expect(screen.getByRole('button')).toHaveClass('bg-red-600', 'px-3', 'py-1.5');
 
-    rerender(
-      <Button variant="accent">
-        Continue
-      </Button>,
-    );
+    rerender(<Button variant="accent">Continue</Button>);
     expect(screen.getByRole('button')).toHaveClass('bg-brand-teal');
+  });
+
+  it('renders every variant with a distinct visual treatment', () => {
+    const { rerender } = render(<Button variant="success">Verify</Button>);
+    expect(screen.getByRole('button')).toHaveClass('bg-emerald-600');
+
+    rerender(<Button variant="successOutline">Publish</Button>);
+    expect(screen.getByRole('button')).toHaveClass('border-emerald-200', 'text-emerald-700');
+
+    rerender(<Button variant="dangerOutline">Reject</Button>);
+    expect(screen.getByRole('button')).toHaveClass('border-red-200', 'text-red-600');
+    expect(screen.getByRole('button')).not.toHaveClass('bg-white');
+
+    rerender(<Button variant="accentOutline">Assign</Button>);
+    expect(screen.getByRole('button')).toHaveClass('border-brand-teal', 'text-brand-teal');
   });
 
   it('respects a custom type for form submissions', () => {

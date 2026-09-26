@@ -9,6 +9,8 @@ export default function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   danger,
+  busy = false,
+  busyLabel = 'Working…',
   children,
   onConfirm,
   onClose,
@@ -19,6 +21,8 @@ export default function ConfirmDialog({
   confirmLabel: string;
   cancelLabel?: string;
   danger?: boolean;
+  busy?: boolean;
+  busyLabel?: string;
   children?: ReactNode;
   onConfirm: () => void;
   onClose: () => void;
@@ -34,10 +38,16 @@ export default function ConfirmDialog({
     >
       {children}
       <div className="mt-6 flex gap-3">
-        <Button variant="secondary" className="flex-1" onClick={onClose}>
+        <Button variant="secondary" className="flex-1" onClick={onClose} disabled={busy}>
           {cancelLabel ?? 'Keep browsing'}
         </Button>
-        <Button variant={danger ? 'destructive' : 'primary'} className="flex-1" onClick={onConfirm}>
+        <Button
+          variant={danger ? 'destructive' : 'primary'}
+          className="flex-1"
+          onClick={onConfirm}
+          loading={busy}
+          loadingLabel={busyLabel}
+        >
           {confirmLabel}
         </Button>
       </div>

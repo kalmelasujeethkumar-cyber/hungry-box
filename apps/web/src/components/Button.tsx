@@ -1,17 +1,29 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { forwardRef } from 'react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'ghost' | 'accent';
+export type ButtonVariant =
+  | 'primary'
+  | 'secondary'
+  | 'destructive'
+  | 'ghost'
+  | 'accent'
+  | 'success'
+  | 'accentOutline'
+  | 'dangerOutline'
+  | 'successOutline';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary:
-    'bg-brand-orange text-white hover:bg-brand-orange/90',
+  primary: 'bg-brand-orange text-white hover:bg-brand-orange/90',
   secondary:
     'border border-slate-300 bg-white text-slate-700 hover:border-brand-teal hover:text-brand-teal',
   destructive: 'bg-red-600 text-white hover:bg-red-700',
   ghost: 'text-brand-teal hover:bg-brand-sky/40',
   accent: 'bg-brand-teal text-white hover:bg-brand-teal/90',
+  success: 'bg-emerald-600 text-white hover:bg-emerald-700',
+  accentOutline: 'border border-brand-teal text-brand-teal hover:bg-brand-sky/40',
+  dangerOutline: 'border border-red-200 text-red-600 hover:bg-red-50',
+  successOutline: 'border border-emerald-200 text-emerald-700 hover:bg-emerald-50',
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
