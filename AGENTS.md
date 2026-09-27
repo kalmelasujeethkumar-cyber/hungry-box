@@ -4,12 +4,18 @@ Permanent engineering rules for the Hungry Box codebase. Read before modifying c
 
 ## What Hungry Box is
 
-Hungry Box is a multi-branch food/snacks delivery platform. The first operational branch is
-**Guntur, Andhra Pradesh, India**, and the system is architected from day one for additional
-branches (Hyderabad, Vijayawada, Visakhapatnam, ...) with **no code changes required** for a
-new branch.
+Hungry Box is a multi-branch **snacks and shakes** delivery platform. It is **not** a general
+restaurant marketplace, and features must not quietly turn it into one. The first operational
+branch is **Guntur, Andhra Pradesh, India**, and the system is architected from day one for
+additional branches (Hyderabad, Vijayawada, Visakhapatnam, ...) with **no code changes
+required** for a new branch.
 
 This repository is developed phase-by-phase. Do not jump ahead of the current phase.
+
+**Current checkpoint:** Phase 12C is complete and pushed (`c26a578`). Phase 12D
+(dead code / bundle performance) and Phase 13A (Customer guest commerce) are **not started**
+and must not be started without an explicit instruction. `docs/architecture.md` is the
+canonical architecture reference and is reconciled through Phase 12C.
 
 ## Non-negotiable rules
 
@@ -28,10 +34,28 @@ This repository is developed phase-by-phase. Do not jump ahead of the current ph
    one codebase and one authentication flow:
    - `SUPER_ADMIN` — global access across all branches.
    - `BRANCH_MANAGER` — restricted to their assigned branch only.
-   - `DELIVERY_PARTNER` — restricted to their assigned operational scope.
+   - `DELIVERY_PARTNER` — restricted to their assigned operational scope (**paused — keep for
+     future**, see below).
    - `CUSTOMER` — buyer experience.
      Do not create four separate applications. After login, route users to the correct
      role-specific layout/experience.
+5. **One management entry.** `SUPER_ADMIN` and `BRANCH_MANAGER` both sign in at `/admin`
+   (`ManagementLoginPage`) and land on a role-aware `/admin/dashboard`. The retired `/manager`
+   URLs are **redirect-only** and must never become a second login surface. There is no
+   separate active Manager login architecture.
+6. **Customer authentication is currently required.** Every `/customer/*` route is
+   `RequireAuth` + `RequireRole(['CUSTOMER'])`. Guest commerce (no login/password) is future
+   **Phase 13A** work and is not implemented.
+7. **The final Customer visual design has not been decided** — the user will provide it. Do
+   not redesign the Customer website, product cards, navigation or overall Customer UX on your
+   own initiative, and do not commit to a new visual direction "in passing". A minimal
+   technical change needed for correctness or code splitting is fine; a redesign is not.
+8. **Delivery Partner is paused, not dead code.** It is fully implemented and must not be
+   deleted, deprecated, stubbed or "cleaned up" because it is paused. Code-splitting Partner UI
+   so Customers do not download it is allowed.
+9. **Frontend guards are UX, not authorization.** `RequireAuth` / `RequireRole` /
+   `canRoleAccessPath` keep a user in their own area; the API's `RolesGuard` and
+   `BranchScopeGuard` remain authoritative on every request.
 
 ## Mandatory technology stack (do NOT replace)
 
@@ -47,10 +71,24 @@ Forbidden: MongoDB, Firebase as primary backend/database, Supabase as primary
 database/backend, Next.js as a React/Vite replacement, Vue, Angular, GraphQL as the primary
 API, or any hosting platform other than Railway.
 
-Supporting libraries may be added only when they clearly serve the architecture
-(e.g. React Router, TanStack Query, React Hook Form, Zod, Socket.IO, a secure auth library,
-payment gateway SDK, object/image storage, map/location services). Every dependency must have
-a documented reason; avoid unnecessary libraries and placeholder code.
+Supporting libraries may be added only when they clearly serve the architecture and are
+recorded as an ADR in `docs/architecture.md`. In use today: React Router (the only router),
+Socket.IO (realtime), Recharts (admin charts), `@node-rs/argon2` (password hashing), Cloudinary
+(image/document storage), and `@hungrybox/shared` (contracts).
+
+Deliberately **absent** — do not add these as a convenience:
+
+- **No Zod.** Input validation is `class-validator` DTOs plus the global `ValidationPipe`.
+- **No TanStack Query.** Server state is fetched with `useEffect` + local state through the
+  typed `apps/web/src/api/client.ts` wrapper.
+- **No React Hook Form.** Forms are controlled components using the shared `components/forms`
+  field set.
+
+Adding any of them, or any other data-fetching, form or validation library, requires an
+explicit decision recorded as an ADR — not a default choice.
+
+Every dependency must have a documented reason; avoid unnecessary libraries and placeholder
+code.
 
 ## Filesystem & tooling safety
 
@@ -93,10 +131,13 @@ production-quality, and role-appropriate:
   branch-level authorization, input validation, secure API design, audit logging.
 - Never commit secrets. `.env*` files are git-ignored; only `.env.example` with placeholder
   values may be committed.
-- Payment verification happens on the server.
+- Payment verification happens on the server. The live providers are the `dev` simulator and
+  cash on delivery; a real gateway is deferred.
 - Protect sensitive data (hashed passwords, payout info, tokens) from exposure in API
   responses and logs.
-- Secure file/document handling for onboarding/KYC uploads (later phases).
+- Secure file/document handling for onboarding/KYC uploads is **already implemented** (Phases
+  10B–10D): private storage, magic-byte validation, backend-authorized short-lived access URLs
+  (never persisted), and a KYC audit trail. Do not re-implement it.
 
 ## Development / demo credentials (seeding only)
 
@@ -110,11 +151,19 @@ securely hashed. Never expose passwords through APIs or production docs.
 Note: `shiva@` is intentionally a username. It must NOT be rejected merely because it is not a
 valid email address.
 
-## Order lifecycle (architecture must support; implement in later phases)
+## Order lifecycle (implemented — do not re-model)
 
-Order Created → Branch Manager confirms → Preparing → Ready for Pickup → Delivery Partner
-assigned → accepted → Picked Up → Out for Delivery → Delivered. Plus cancellation/refund
-states. Do not model an incomplete lifecycle; design states so all of these fit cleanly.
+`Order.status` is `PLACED → CONFIRMED → PREPARING → READY_FOR_PICKUP → OUT_FOR_DELIVERY →
+DELIVERED`, with `CANCELLED` reachable from the pre-delivery states. Delivery assignment is
+tracked separately on `DeliveryAssignment.status` (`ASSIGNED → ACCEPTED → PICKED_UP →
+OUT_FOR_DELIVERY → DELIVERED`, plus `REJECTED` / `CANCELLED`) — note there is deliberately no
+order-level "picked up" state, because pickup is an assignment event. `Payment.status`
+(`PENDING → AUTHORIZED → PAID`, plus `FAILED` / `CANCELLED` / `REFUNDED`) is likewise a
+separate machine. All transitions are server-validated, idempotent where it matters, written
+inside a transaction, and recorded in the audit log.
+
+Refund **actions** are still unimplemented — `REFUNDED` exists as a status and a later-phase
+schema change is required to trigger it. Do not add a competing status machine.
 
 ## Repository structure & naming conventions
 
@@ -134,9 +183,10 @@ docs/         Architecture and decision documentation
 - Shared contracts live in `packages/shared`; reuse them from both apps via
   `@hungrybox/shared`. The shared package is **built to `packages/shared/dist`** (declaration
   files) before the apps type-check/build; both apps consume the built package, never shared
-  source. Phase 1 uses shared contracts **type-only**; before shipping shared _runtime_
+  source. Shared contracts are currently **type-only**; before shipping shared _runtime_
   values, give the package an ESM JS + types build step (see
-  docs/architecture.md#shared-contracts). Do not duplicate shared types inside the apps.
+  `docs/architecture.md` §2, "Shared contracts"). Do not duplicate shared types inside the
+  apps.
 - Do not add code comments unless they explain non-obvious decisions.
 
 ## Development workflow
@@ -145,13 +195,20 @@ docs/         Architecture and decision documentation
 - Commands (run from repo root):
   - `npm run dev:web` — frontend dev server
   - `npm run dev:api` — API dev server (watch)
-  - `npm run build` — typecheck + build all
-  - `npm run typecheck` / `npm run lint` / `npm run format`
-  - `npm run db:generate` / `npm run db:studio` / `npm run db:migrate` — Prisma
-- Before finishing any task: run typecheck, lint, and the relevant build; verify endpoints
-  serve; confirm no secrets are staged; confirm no architecture conflicts.
-- Database schema is defined with Prisma migrations. Phase 1 has no business models yet;
-  add models via migrations in later phases.
+  - `npm run build` — build shared → api → web
+  - `npm run typecheck` / `npm run lint` / `npm run format` / `npm run format:check`
+  - `npm run test` / `npm run test:api` / `npm run test:web`
+  - `npm run db:generate` / `npm run db:studio` / `npm run db:migrate` / `npm run db:deploy` —
+    Prisma
+  - `npm run provision:admin` / `npm run provision:branch` — operator-only, refuse-by-default
+    bootstrap CLIs for the first Super Admin and the first branch
+- Before finishing any task: run typecheck, lint, and the relevant build; run the relevant
+  tests; verify endpoints serve; confirm no secrets are staged; confirm no architecture
+  conflicts. At the Phase 12C checkpoint the suites stand at **490 API tests** (5 skipped) and
+  **265 web tests**.
+- Database schema is defined with Prisma migrations. The schema now carries **25 models and 14
+  enums** across **8 migrations** (newest: `20261001040000_phase12c_branch_product_images`).
+  Add models only via a new migration; never edit an already-applied migration.
 
 ## Sandbox / demo data
 

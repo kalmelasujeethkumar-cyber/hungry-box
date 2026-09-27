@@ -3,6 +3,15 @@
 This document records the architecture direction and key decisions. It is a living document;
 update it when architecture decisions change (record a short ADR entry at the bottom).
 
+**Status:** reconciled through Phase 12C (checkpoint `c26a578`). Source code is the source of
+truth; where this document and the code disagree, the code is correct and this document is a
+defect. Numbers quoted as "verified" are the measured results of the phase they belong to.
+
+**Product scope:** Hungry Box sells **snacks and shakes**. It is not a general restaurant
+marketplace, and features must not quietly turn it into one. (The demo seed carries a broader
+sample catalogue — biryani, starters, rolls, beverages, desserts — because seed data exists to
+exercise pricing and media; that is demo content, not a product decision.)
+
 ## 1. Monorepo layout
 
 npm workspaces monorepo. Each workspace carries its own `package.json`; the root
@@ -17,31 +26,89 @@ packages/shared Shared TypeScript types/contracts (@hungrybox/shared)
 ## 2. Shared contracts
 
 `packages/shared` is the single source of truth for contracts shared across apps (roles,
-API response envelopes, health report shape, and later DTOs/entities).
+API response envelopes, health report shape, and DTOs/entities). Current contract modules,
+one bounded concern each:
+
+```
+packages/shared/src
+  roles.ts      UserRole + the four role literals
+  auth.ts       AuthUser, LoginRequest/Response, JwtPayload
+  health.ts     HealthReport
+  branches.ts   BranchDto, branch create/update/status inputs
+  catalog.ts    Category/Product/ProductImage/BranchProduct DTOs + media inputs
+  address.ts    AddressDto, Create/UpdateAddressInput
+  location.ts   ServiceabilityResult
+  cart.ts       CartSummary, CartItemDto, cart mutation inputs
+  orders.ts     Order DTOs, checkout/payment DTOs, order state unions
+  delivery.ts   Partner, KYC-facing, assignment, tracking, notification, realtime DTOs
+  audit.ts      AuditEvent DTOs, AuditListQuery/Result
+  users.ts      User DTOs, manager creation/status inputs
+  analytics.ts  Dashboard/report queries + rows
+  kyc.ts        KycStatusDto, KycListItemDto, review/access DTOs
+  index.ts      barrel re-exporting every module above
+```
 
 - The package **builds to `packages/shared/dist`** (TypeScript declaration files via
   `tsc --emitDeclarationOnly`). Consumers (`apps/api`, `apps/web`) resolve `@hungrybox/shared`
   through the workspace symlink and the package `types` field — they always use the
   **built** package, never the source. Each app's `prebuild`/`pretypecheck`/`predev` script
   rebuilds shared first so the workspace stays self-contained.
-- Phase 1 consumes shared contracts **type-only** (`import type …`). Before shipping shared
-  _runtime_ values (constants, pure functions), add an ESM JS + types build step for the
-  package and switch consumers to the runtime artifact (documented in the decision log).
+- Shared contracts are consumed **type-only** in both apps (verified: there is no value
+  import of `@hungrybox/shared` anywhere in `apps/`). This is deliberate while the package
+  emits declarations only. Anything the UI needs at runtime — status labels, step arrays,
+  audit-kind captions — is currently defined as a local `as const` in `apps/web` (see
+  `features/orders/order-status.ts`, `components/status.ts`, `features/audit/audit-labels.ts`)
+  rather than duplicating the contract. Before shipping shared _runtime_ values, add an ESM
+  JS + types build step for the package and switch consumers to the runtime artifact
+  (documented in the decision log).
 
 ## 3. Backend structure
 
-NestJS, one module per bounded context under `apps/api/src/modules/`:
+NestJS, one module per bounded context under `apps/api/src/modules/`. The current set:
 
-- `health/` — public health endpoint (Phase 1)
-- Phase 2+: `auth/`, `branches/`, `users/`, `products/`, `branch-products/`,
-  `customers/`, `orders/`, `payments/`, `deliveries/`, `notifications/`,
-  `analytics/`, `audit/`, …
+| Module               | Responsibility                                                                 |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `health/`            | Public health/readiness endpoint (`GET /api/health`)                           |
+| `auth/`              | Login, JWT issuing, `JwtAuthGuard`, session/user shape                         |
+| `users/`             | Super Admin user + branch-manager administration                               |
+| `branches/`          | Branch CRUD, settings, lifecycle status (`ACTIVE`/`PAUSED`/`INACTIVE`)         |
+| `products/`          | **Global** product + `ProductImage` management (SUPER_ADMIN media)             |
+| `categories/`        | **Global** category + category image management (SUPER_ADMIN media)            |
+| `branch-products/`   | Branch catalog configuration **and branch-owned media** (`BranchProductImage`) |
+| `catalog/`           | Public/customer read-only catalogue (list, categories, detail)                 |
+| `locations/`         | Haversine serviceability per `branch.deliveryRadiusKm`                         |
+| `addresses/`         | Customer-owned delivery addresses (IDOR-proof CRUD)                            |
+| `cart/`              | One cart per `(customer, branch)` with server-side price snapshots             |
+| `checkout/`          | Server-derived preview, conflicts, payment intent                              |
+| `payments/`          | Provider registry, verification, COD bookkeeping, dev simulator                |
+| `orders/`            | Idempotent transactional creation, state machine, events, cancellation         |
+| `branch-orders/`     | Branch-scoped order reads/transitions + COD collection recording               |
+| `delivery-partners/` | Partner onboarding, documents, availability, `me` surface                      |
+| `deliveries/`        | Assignment, dispatch, pickup, delivery, tracking, location pings               |
+| `kyc/`               | Private Aadhaar + Driving Licence documents, manager review, access URLs       |
+| `notifications/`     | Notification records written by order/delivery events (backend only today)     |
+| `analytics/`         | Read-only dashboard/report aggregation + CSV                                   |
+| `audit/`             | Append-only audit log, branch-scoped reads, CSV                                |
+| `media/`             | Storage-provider abstractions (public + private), byte-level validators        |
+| `realtime/`          | `/realtime` Socket.IO gateway + CORS IoAdapter                                 |
+
+`apps/api/src/provisioning/` holds the operator-only `provisionSuperAdmin` /
+`provisionBranch` functions; the CLI wrappers in `apps/api/scripts/` are the only callers
+(`npm run provision:admin` / `provision:branch`, ADR-033).
+
+`media/` is the one module in that table that is **not** imported by `app.module.ts`. It
+exports two NestJS providers (`MediaModule` and `PrivateDocumentStorageModule`) that the
+bounded contexts which need storage import directly — `products`, `categories`,
+`branch-products` and `kyc`. That is deliberate: it keeps a storage detail out of the root
+composition while still allowing a media-free test double.
 
 Cross-cutting:
 
 - `apps/api/src/prisma/` — PrismaService (wired globally via `@Global()` module)
 - Config via `@nestjs/config` (`ConfigModule.forRoot({ isGlobal: true })`)
 - `main.ts` sets the global API prefix (`api`), CORS (from env), and port (from env)
+- Three global guards are registered in `app.module.ts` in this order (ADR-006):
+  `JwtAuthGuard` → `RolesGuard` → `BranchScopeGuard`
 
 ### ORM decision
 
@@ -62,17 +129,34 @@ Prisma 7 specifics in this repo:
   generated path, never `@prisma/client`.
 - Prisma 7 requires a driver adapter: `@prisma/adapter-pg` + `pg` with the connection
   string from `DATABASE_URL`.
-- `PrismaService` constructs the client only when `DATABASE_URL` is set, so the API (and the
-  health check) still boots without a configured database in Phase 1. Later phases should
-  make the database a hard requirement.
+- `PrismaService` constructs the client only when `DATABASE_URL` is set. The API therefore
+  still boots without a configured database and `/api/health` reports
+  `database: 'unconfigured'`; any endpoint that actually needs the database fails through
+  `requireClient()` with `503 Service Unavailable` ("Database is not configured"). This
+  soft-boot is what makes the health check meaningful, not a leftover Phase 1 shortcut.
 
-Phase 1 ships the datasource + generator only. **No business models yet**; they are added via
-Prisma migrations in later phases.
+Phase 1 shipped only the datasource + generator. The schema now carries **25 models and
+14 enums**, added through exactly **8 Prisma migrations**, in this order:
+
+| #   | Migration                                        | Phase |
+| --- | ------------------------------------------------ | ----- |
+| 1   | `20260923000000_phase2_identity_catalog`         | 2     |
+| 2   | `20260924000000_phase3_customer_storefront`      | 3     |
+| 3   | `20260925000000_phase4_checkout_payments_orders` | 4     |
+| 4   | `20261001000000_phase5_delivery_partners`        | 5     |
+| 5   | `20261001010000_phase10b_cash_on_delivery`       | 10B   |
+| 6   | `20261001020000_phase10c_public_catalog_media`   | 10C   |
+| 7   | `20261001030000_phase10d_private_kyc_documents`  | 10D   |
+| 8   | `20261001040000_phase12c_branch_product_images`  | 12C   |
+
+`migration_lock.toml` pins the provider to `postgresql`. The newest migration
+(`..._phase12c_branch_product_images`) is purely additive; no already-applied migration has
+ever been edited.
 
 ## 4. Frontend structure
 
 Vite + React + TypeScript strict. Tailwind CSS v4 is wired via `@tailwindcss/vite`; the brand
-palette is exposed as Tailwind theme tokens in `src/index.css`:
+palette is exposed as Tailwind theme tokens in `apps/web/src/styles/index.css`:
 
 | Token          | Value     |
 | -------------- | --------- |
@@ -82,8 +166,48 @@ palette is exposed as Tailwind theme tokens in `src/index.css`:
 | `brand-orange` | `#FF6500` |
 | `brand-yellow` | `#FFD500` |
 
-Future phases add React Router (role-based routing), TanStack Query (data fetching),
-React Hook Form + Zod (forms/validation) on top of this foundation.
+Source layout under `apps/web/src`:
+
+```
+main.tsx            React root: AuthProvider + App
+app/App.tsx         RouterProvider over the real route table
+auth/               AuthProvider (session restore), route guards, role→path logic
+routes/             paths.ts (the single source of route strings), AppRoutes.tsx,
+                    management-entry.tsx, legacy-manager-redirect.tsx
+layouts/            CustomerLayout (storefront + cart providers, nav, sheets)
+pages/              HomePage, LoginPage, NotFoundPage
+pages/admin/        Super Admin: AdminLayout + ManagementLoginPage + 8 SUPER_ADMIN pages
+                    (AdminOverviewPage dashboard + 7 segment pages)
+pages/manager/      Branch Manager: ManagerLayout + ManagerHomePage + 8 BRANCH_MANAGER
+                    segment pages (orders, order detail, catalogue, partners, partner
+                    detail, assignments, settings, audit)
+pages/customer/     Customer: storefront, cart, checkout, orders, addresses, profile
+pages/delivery/     Delivery Partner: DeliveryLayout + home/deliveries/profile
+components/         Shared UI foundation (Button, Dialog, Notice, LoadingState,
+                    StatusBadge, EmptyState, ErrorState, FilterChips, ConfirmDialog,
+                    PageHeader, ProductImage, ImageField, SignOutButton, forms/)
+features/           storefront/, orders/, audit/, delivery/, manager/ domain modules
+api/                client.ts (typed fetch wrapper + per-domain API objects), query.ts,
+                    session-expiry.ts
+lib/                money.ts (minor-unit formatting), format.ts (date formatting)
+```
+
+Runtime dependencies are deliberately few and each is load-bearing:
+
+- `react` / `react-dom` — UI runtime.
+- `react-router-dom` — the **only** router; every screen is a route (see §14).
+- `recharts` — admin dashboard + reports charts **only** (`AdminOverviewPage`,
+  `AdminReportsPage`).
+- `socket.io-client` — realtime only, reached exclusively through
+  `features/delivery/use-delivery-realtime.tsx` (delivery layout/home and the customer
+  order-tracking section).
+- `@hungrybox/shared` — type-only contracts.
+
+There is deliberately **no** TanStack Query, no React Hook Form and no Zod in this
+codebase: server state is fetched with `useEffect` + local state through the typed
+`api/client.ts` wrapper, and forms are controlled components validated by shared field
+components plus server-side DTO validation (class-validator). Do not add a data-fetching
+or form library without an ADR; the current approach is intentional and tested.
 
 ## 5. Multi-branch model (architectural invariant)
 
@@ -107,11 +231,17 @@ React Hook Form + Zod (forms/validation) on top of this foundation.
 
 ## 7. Security posture
 
-Password hashing, JWT/session security, RBAC + branch authorization, input validation
-(Zod/class-validator later), audit logging, server-side payment verification, protected
-sensitive data (hashed secrets, payout info, tokens never exposed via API/logs), secure
-document handling for KYC, and no secrets in git. Sensitive values live in environment
-variables; `.env` files are git-ignored.
+Password hashing, JWT/session security, RBAC + branch authorization, input validation,
+audit logging, server-side payment verification, protected sensitive data (hashed secrets,
+payout info, tokens never exposed via API/logs), secure document handling for KYC, and no
+secrets in git. Sensitive values live in environment variables; `.env` files are
+git-ignored.
+
+Input validation is **class-validator** on the API (DTO classes plus the global
+`ValidationPipe` with `whitelist`, `forbidNonWhitelisted` and `transform`). There is **no
+Zod** in this codebase — see §4 for why no schema library is present, and ADR-062's
+neighbouring rule in §23: adding a data-fetching, form or validation library requires an
+ADR rather than being treated as routine.
 
 ## 8. Order lifecycle (implemented in Phase 4)
 
@@ -124,15 +254,34 @@ reshaping.
 
 ## 9. Health check
 
-`GET /api/health` returns service, version, uptime, timestamp, and database status
-(`unconfigured` | `connected` | `unreachable`). The API starts and serves health even
-without a database configured.
+`GET /api/health` is `@Public()` and returns service, version, uptime, timestamp, and database
+status (`unconfigured` | `connected` | `unreachable`, probed with a 2.5 s timeout). The API
+starts and serves health even without a database configured. The HTTP status is part of the
+contract: **200** only when `status === 'ok'` (database `connected`), **503** when degraded
+(ADR-035), which is what makes it usable as a Railway readiness check (§10).
 
 ## 10. Deployment (Railway)
 
-Each app deploys from its workspace directory (Procfiles / Railway config set up in a
-deployment phase). Postgres provisioned via Railway. `DATABASE_URL` supplied via Railway
-env vars. Secrets never committed.
+The API is deployed from `railway.json` at the repository root (ADR-032):
+
+- **Builder:** Nixpacks, `buildCommand: npm run build` (root script builds shared → api → web).
+- **Start:** `startCommand: npm run start:api` → the compiled `dist/main.js` of the API
+  workspace.
+- **Migrations:** `preDeployCommand: npm run db:deploy` (`prisma migrate deploy`) runs
+  against `DATABASE_URL` **before** the new version serves traffic, with a 300 s timeout.
+- **Readiness:** `healthcheckPath: /api/health`, which returns 200 only when the database is
+  reachable and 503 when degraded (ADR-035).
+- **Scale:** `numReplicas: 1`, `restartPolicyType: ON_FAILURE` (5 retries). Watch paths are
+  limited to `apps/api/**`, `packages/shared/**` and the manifests.
+- Node is pinned by `.nvmrc` (22) plus `engines` (ADR-036).
+
+Postgres is provisioned through Railway and `DATABASE_URL` is supplied as a Railway
+environment variable. Cloudinary, JWT and media-provider secrets are server-only.
+
+`railway.json` configures the deployment but does not gate it: there is no approval step in
+the config, so triggering a deploy remains an operator action outside the repository. A phase
+that changes backend behaviour is considered complete when it is verified locally (typecheck,
+lint, tests, build, `prisma validate`) and that evidence is recorded — see §19 and §20.
 
 ---
 
@@ -258,6 +407,10 @@ env vars. Secrets never committed.
   totals. Checkout is intentionally disabled until Phase 4.
 - Money is formatted from integer minor units (`formatPaise`) on the client for display
   only. The "orders" page is a placeholder (Phase 4).
+
+> The two statements above describe the **Phase 3** state of the storefront, which is what
+> this section is a record of. For what the Customer experience does _today_, read §16 —
+> checkout, orders and tracking are all live.
 
 ### Validation & tests
 
@@ -412,6 +565,567 @@ Order-related kinds: `ORDER_CREATED`, `PAYMENT_INITIATED`, `PAYMENT_VERIFIED`,
 
 ---
 
+## 14. Management routing architecture (Phase 12B)
+
+One application, one login, one management entry. `apps/web/src/routes/paths.ts` is the
+single source of truth for every route string; no page hard-codes a path.
+
+### Route table
+
+| Route                                                         | Audience              | Screen                                            |
+| ------------------------------------------------------------- | --------------------- | ------------------------------------------------- |
+| `/`                                                           | public                | `HomePage`                                        |
+| `/login`                                                      | public (`PublicOnly`) | `LoginPage` (customer/partner sign-in)            |
+| `/admin`                                                      | public                | `ManagementEntry` — management login or forward   |
+| `/admin/dashboard`                                            | management roles      | `ManagementDashboard` — role-aware                |
+| `/admin/branches`                                             | `SUPER_ADMIN`         | `AdminBranchesPage`                               |
+| `/admin/orders`                                               | `SUPER_ADMIN`         | `AdminOrdersPage`                                 |
+| `/admin/catalogue`                                            | `SUPER_ADMIN`         | `AdminCataloguePage`                              |
+| `/admin/managers`                                             | `SUPER_ADMIN`         | `AdminManagersPage`                               |
+| `/admin/partners`                                             | `SUPER_ADMIN`         | `AdminPartnersPage`                               |
+| `/admin/audit`                                                | `SUPER_ADMIN`         | `AdminAuditPage`                                  |
+| `/admin/reports`                                              | `SUPER_ADMIN`         | `AdminReportsPage`                                |
+| `/admin/branch`                                               | —                     | redirect → `/admin/dashboard`                     |
+| `/admin/branch/orders`, `/admin/branch/orders/:orderId`       | `BRANCH_MANAGER`      | `ManagerOrdersPage`, `ManagerOrderDetailPage`     |
+| `/admin/branch/catalogue`                                     | `BRANCH_MANAGER`      | `ManagerCatalogPage`                              |
+| `/admin/branch/partners`, `/admin/branch/partners/:partnerId` | `BRANCH_MANAGER`      | `ManagerPartnersPage`, `ManagerPartnerDetailPage` |
+| `/admin/branch/assignments`                                   | `BRANCH_MANAGER`      | `ManagerAssignmentsPage`                          |
+| `/admin/branch/settings`                                      | `BRANCH_MANAGER`      | `ManagerSettingsPage`                             |
+| `/admin/branch/audit`                                         | `BRANCH_MANAGER`      | `ManagerAuditPage`                                |
+| `/manager`, `/manager/*`                                      | redirect only         | `LegacyManagerRedirect`                           |
+| `/delivery`, `/delivery/deliveries`, `/delivery/profile`      | `DELIVERY_PARTNER`    | `DeliveryLayout` + 3 pages                        |
+| `/customer/*`                                                 | `CUSTOMER`            | `CustomerLayout` + 8 child routes                 |
+| `*`                                                           | public                | `NotFoundPage`                                    |
+
+### The management entry and the role-aware dashboard
+
+`routes/management-entry.tsx` owns the whole management entry decision, in this order:
+
+- `ManagementEntry` (`/admin`): while the session is restoring → `AuthLoadingScreen`; no user
+  → `ManagementLoginPage`; a signed-in non-management role → `Navigate` to that role's own
+  home; a management role → `Navigate` to `/admin/dashboard`.
+- `ManagementDashboard` (`/admin/dashboard`): while restoring → `AuthLoadingScreen`; no user
+  → `Navigate` to `/admin` carrying the intended destination in router `state.from`; then
+  the **authenticated role** selects `AdminOverviewPage` or `ManagerHomePage`. A
+  non-management role is sent to its own home.
+
+Consequences that are load-bearing and must not regress:
+
+- There is exactly **one** management login experience. `/admin` never shows a Customer
+  login form, and there is no `/admin/login`.
+- Neither dashboard can be reached by deep link alone: the role check happens _before_ a
+  dashboard is chosen, so a Super Admin can never be shown the Branch Manager dashboard or
+  vice versa.
+- A restored session never flashes the login form.
+
+### Client-side guards
+
+`auth/route-guards.tsx` exports four components used by the route table:
+
+| Guard         | Behaviour when the session is restoring | Unauthenticated                     | Wrong role                       |
+| ------------- | --------------------------------------- | ----------------------------------- | -------------------------------- |
+| `RequireAuth` | `AuthLoadingScreen`                     | `Navigate` → `loginPath` (+ `from`) | passes through                   |
+| `RequireRole` | —                                       | `Navigate` → `loginPath`            | `Navigate` → `homePathForRole()` |
+| `PublicOnly`  | —                                       | renders children                    | `Navigate` → `homePathForRole()` |
+
+`RequireAuth` → `RequireRole` is always the nesting order, so an unauthenticated visitor is
+sent to the correct login **before** any role evaluation, and a wrong-role visitor is
+redirected without ever mounting the protected page.
+
+`auth/role-paths.ts` holds the client mirror of the role model: `ROLE_HOME_PATHS`,
+`isManagementRole`, `canRoleAccessPath` and `resolvePostLoginPath`.
+
+`ROLE_HOME_PATHS` is deliberately **not** one home per role: `SUPER_ADMIN` and
+`BRANCH_MANAGER` both map to `/admin/dashboard` (one management URL, role-chosen body),
+while `DELIVERY_PARTNER` maps to `/delivery` and `CUSTOMER` to `/customer`. That shared
+entry is exactly why the role must be checked before a dashboard is chosen.
+
+`canRoleAccessPath` exists **only** to keep a post-login redirect inside the signed-in role's
+own area for a stale bookmark: 7 `SUPER_ADMIN_SEGMENTS` (branches, orders, catalogue,
+managers, partners, audit, reports) and 6 `BRANCH_MANAGER_SEGMENTS` (orders, catalogue,
+partners, assignments, settings, audit), each matched as an exact path or a path prefix. It
+grants nothing: the API's `RolesGuard` and `BranchScopeGuard` remain authoritative on every
+request (ADR-055).
+
+### Legacy `/manager` handling
+
+`routes/legacy-manager-redirect.tsx` is redirect-only and renders no login of its own.
+`mapLegacyManagerPath` maps every retired URL onto its `/admin/branch/...` equivalent,
+preserving trailing detail segments:
+
+| Legacy                       | Target                                      |
+| ---------------------------- | ------------------------------------------- |
+| `/manager`                   | `/admin/dashboard`                          |
+| `/manager/orders[/:orderId]` | `/admin/branch/orders[/:orderId]`           |
+| `/manager/catalog`           | `/admin/branch/catalogue`                   |
+| `/manager/catalogue`         | `/admin/branch/catalogue` (defensive alias) |
+| `/manager/partners[/:id]`    | `/admin/branch/partners[/:id]`              |
+| `/manager/assignments`       | `/admin/branch/assignments`                 |
+| `/manager/settings`          | `/admin/branch/settings`                    |
+| `/manager/audit`             | `/admin/branch/audit`                       |
+
+Behaviour: unauthenticated → `/admin` (management login) carrying the mapped destination;
+signed-in non-`BRANCH_MANAGER` → that role's own home; `BRANCH_MANAGER` → the mapped
+target, or `/admin/dashboard` when there is no mapping. Because the legacy handler never
+renders a login screen, `/manager` cannot become a second management entry or a redirect
+loop (ADR-056).
+
+`routes/management-routing.test.tsx` mounts the **real** route table on a memory router, so
+guards, deep links, role refusals, the legacy mapping and the no-loop property are tested
+against production routing rather than a stand-in.
+
+---
+
+## 15. Catalogue and media architecture
+
+### The two-level catalogue
+
+Global, HQ-owned: `Category`, `Product`, `ProductImage` (≤ 3 per product), and the category
+image columns. Branch-owned: `BranchProduct` (price, discount, availability, status — unique
+on `(branchId, productId)`) and, since Phase 12C, `BranchProductImage`.
+
+A Branch Manager edits **only** `BranchProduct` and `BranchProductImage` rows. Global product
+and category media mutations are `SUPER_ADMIN`-only (`products` and `categories` controllers).
+There is no code path through which a manager can write a `ProductImage` or a category image
+(ADR-025 extended by ADR-057).
+
+### `BranchProductImage` (Phase 12C)
+
+```prisma
+model BranchProductImage {
+  id               String        @id @default(cuid())
+  branchProductId  String
+  branchProduct    BranchProduct @relation(fields: [branchProductId], references: [id], onDelete: Cascade)
+  imageUrl         String
+  providerPublicId String?
+  resourceType     String?
+  altText          String?
+  sortOrder        Int           @default(0)
+  isPrimary        Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+
+  @@index([branchProductId])
+}
+```
+
+`MAX_BRANCH_PRODUCT_IMAGES = 3` lives in `branch-product-images.service.ts`, not in the
+schema — the cap is a service rule, not a database constraint, so it can change without a
+migration.
+
+Migration `20261001040000_phase12c_branch_product_images` is purely additive: one
+`CREATE TABLE`, one index, one `ON DELETE CASCADE` foreign key. No existing table, column,
+enum or migration was modified.
+
+### Media ownership and endpoints
+
+Branch media is always addressed **through its branch product**, and the branch is derived
+from stored state — never from a client-supplied `branchId`:
+
+| Endpoint                                         | Roles                           |
+| ------------------------------------------------ | ------------------------------- |
+| `POST /branch-products/:id/images`               | `SUPER_ADMIN`, `BRANCH_MANAGER` |
+| `PATCH /branch-products/images/reorder`          | `SUPER_ADMIN`, `BRANCH_MANAGER` |
+| `PATCH /branch-products/images/:imageId/primary` | `SUPER_ADMIN`, `BRANCH_MANAGER` |
+| `DELETE /branch-products/images/:imageId`        | `SUPER_ADMIN`, `BRANCH_MANAGER` |
+
+The service loads `BranchProductImage → BranchProduct.branchId` and compares it with
+`enforcedBranchId(actor)`, where a manager's `branchId` comes from their authenticated
+identity. A foreign branch product or image is reported as `NotFound`, so it is
+indistinguishable from a missing row and cannot be used to probe another branch. Reorder
+derives its branch product from the submitted image ids, validates that they form one
+complete set for that branch product, and only then writes.
+
+### Media rules (identical for global and branch media)
+
+- **Max 3 images** per product _and_ per branch product.
+- **Max 5 MB** per upload (`MAX_PUBLIC_IMAGE_BYTES`, enforced by the multipart
+  `FileInterceptor` limit and re-checked in the service).
+- **JPEG / PNG / WebP only**, decided by byte signature, not by `Content-Type`, filename or
+  extension. SVG and every other format are rejected (ADR-044).
+- **Exactly one primary** at all times: the first image becomes primary, `setPrimary`
+  demotes the previous one, `remove` promotes the lowest-`sortOrder` survivor, and `reorder`
+  reconciles back to one.
+- **Concurrency:** the cap and every write run inside a transaction that first takes
+  `SELECT … FOR UPDATE` on the owning row, so parallel uploads cannot exceed the cap
+  (ADR-045).
+- **Ordering:** a new image is appended after the highest existing `sortOrder`, so removing
+  a middle image cannot produce duplicate positions.
+- **Storage consistency:** the cloud asset is written first, then the database row; a failed
+  database write deletes the orphan best-effort, and a failed remote delete becomes a
+  `MEDIA_CLEANUP_FAILED` audit event instead of breaking the request (ADR-046).
+- **Contracts never leak storage internals:** `BranchProductImageDto` and `ProductImageDto`
+  expose `id`, `imageUrl`, `altText`, `sortOrder`, `isPrimary` only. `providerPublicId` and
+  `resourceType` stay server-side (ADR-047, ADR-057).
+
+Audit kinds added in Phase 12C: `BRANCH_PRODUCT_IMAGE_UPLOADED`,
+`BRANCH_PRODUCT_IMAGE_PRIMARY_CHANGED`, `BRANCH_PRODUCT_IMAGES_REORDERED`,
+`BRANCH_PRODUCT_IMAGE_REMOVED`.
+
+### Canonical image resolution
+
+`apps/api/src/common/utils/catalog-image.ts` is the **only** place that decides which image
+represents a product in a branch. `resolveCatalogImageUrl` sorts candidates by `sortOrder`,
+prefers `isPrimary`, and falls back in this fixed order:
+
+```
+branch image (primary, else first)  →  global product image (primary, else first)
+                                   →  category image  →  null
+```
+
+Every consumer resolves through it, which is what makes the customer-facing image and the
+manager-facing image impossible to disagree:
+
+| Consumer                              | Field produced                  |
+| ------------------------------------- | ------------------------------- |
+| `catalog.service.ts` (catalogue list) | `CatalogProduct.imageUrl`       |
+| `catalog.service.ts` (product detail) | `CatalogProductDetail.imageUrl` |
+| `branch-products.service.ts`          | `BranchProductDto.imageUrl`     |
+| `cart.mapper.ts`                      | `CartItemDto.imageUrl`          |
+| `checkout-validation.service.ts`      | checkout line `imageUrl`        |
+
+`BranchProductDto` additionally returns `branchImages` (editable, ordered) and
+`globalImages` (read-only, so a manager can see why a fallback is being used).
+
+**Public gallery boundary.** `CatalogProductDetail.images` remains the **global HQ gallery**.
+Branch imagery reaches customers only through the canonical `imageUrl` field. This is
+intentional and must not be "fixed" by turning the customer detail endpoint into a
+branch-aware gallery: the public contract stays global, and branch media is a management
+concern layered on top of it.
+
+---
+
+## 16. Customer experience — CURRENT behaviour
+
+Everything in this section is live today. Nothing here is a plan.
+
+- **Authentication is required.** Every `/customer/*` route is wrapped in
+  `RequireAuth` + `RequireRole(['CUSTOMER'])`. A visitor who is not signed in is redirected
+  to `/login`; a signed-in non-customer is sent to their own home. There is no guest
+  browsing, guest cart or guest checkout.
+- `/customer` redirects to `/customer/storefront`.
+- Routes: `storefront`, `cart`, `checkout`, `checkout/success/:orderId`, `addresses`,
+  `orders`, `orders/:orderId`, `profile`.
+- `CustomerLayout` owns `StorefrontProvider` (branch, serviceability, catalogue, addresses)
+  and `CartProvider` (one cart per branch), plus the header, bottom navigation, cart sheet
+  and location modal. Mobile-first, large touch targets.
+- Browsing: server-side search and category filter, product grid, product detail dialog with
+  the full global image gallery, availability and price flags.
+- Cart: server-derived totals, per-branch affinity, and a confirm step when the delivery
+  branch changes with a non-empty cart.
+- Checkout: address selection → server preview → payment method → payment intent →
+  verification → idempotent order placement. A 409 carries a fresh preview and the UI asks
+  the customer to re-confirm; the pay button is blocked while the preview reports issues.
+- Orders: history with status filters, detail with an `OrderEvent`-derived timeline,
+  customer cancellation from `PLACED`/`CONFIRMED`, and cash-on-delivery messaging.
+- Addresses: customer-owned CRUD with at most one default; the first address is
+  auto-promoted; foreign ids are 404.
+- Realtime: the order detail's tracking section shows a Live/Syncing indicator and refetches
+  authoritative REST when a delivery event arrives for that order (ADR-030). Socket payloads
+  are never trusted as data.
+- Payments: `PAYMENT_PROVIDER=dev` (a simulator) plus cash on delivery. **A real gateway has
+  not been integrated.**
+
+## 17. Customer experience — FUTURE (not implemented)
+
+These are explicitly _not_ built. They belong to Phase 13A and later, and the current code
+must not be read as if they exist:
+
+- Guest commerce: browsing, cart, checkout and order tracking **without** a customer account.
+- Removal or de-emphasis of customer authentication.
+- Guest order tracking by order number/phone.
+- A new address architecture (for example guest-claimed saved addresses).
+- GPS or manual-address redesign, and any change to the Haversine serviceability contract.
+- Payment-method cleanup or a production gateway migration.
+
+### Customer design lock
+
+The final Customer-facing visual design **has not been decided**. The user will supply it.
+Until then:
+
+- Do not redesign the Customer website, homepage, product cards, navigation, colour usage,
+  motion, or the overall Customer UX architecture.
+- Do not commit to a new Customer visual direction "in passing" during a technical task.
+- A tiny technical adjustment required for correctness or code splitting is acceptable; a
+  visual redesign is not.
+- Existing Customer pages are production-quality and tested, but they are **not** the final
+  design. Treat them as a placeholder for the user's design, not as a fixed contract.
+
+---
+
+## 18. Delivery Partner — PAUSED, keep for future
+
+The Delivery Partner capability is **paused, not deleted and not deprecated**. It remains
+fully implemented, wired and tested:
+
+- Backend: `delivery-partners` (onboarding, documents, availability, `me`), `deliveries`
+  (assignment, accept, reject, pickup, out-for-delivery, deliver, tracking, location pings),
+  `kyc` (private Aadhaar + Driving Licence), and the realtime gateway.
+- Frontend: `/delivery`, `/delivery/deliveries`, `/delivery/profile` behind
+  `RequireRole(['DELIVERY_PARTNER'])`, plus the customer tracking section and the
+  manager/admin dispatch surfaces.
+- Domain rules that stay in force: Aadhaar + Driving Licence required (ADR-048), private
+  `type: 'authenticated'` storage (ADR-049), short-lived backend-authorized access
+  (ADR-050), human manager review (ADR-052), per-request suspension enforcement
+  (ADR-024/ADR-028).
+
+Do not remove, stub, or "clean up" any Partner page, endpoint, model, guard or test because
+the feature is paused. Code-splitting Partner UI so Customers do not download it is allowed;
+deleting or redesigning it is not.
+
+---
+
+## 19. Testing
+
+| Suite                   | Runner / config                      | Scope                                                                                   |
+| ----------------------- | ------------------------------------ | --------------------------------------------------------------------------------------- |
+| API unit                | Vitest, `apps/api/vitest.config.mts` | `src/**/*.spec.ts`, node environment, Prisma mocked via `PrismaService.requireClient()` |
+| API live e2e (opt-in)   | Vitest, `test/**/*.e2e-spec.ts`      | Skipped unless `RUN_LIVE_E2E=1` **and** a reachable `DATABASE_URL`                      |
+| Web unit                | Vitest, `apps/web/vitest.config.ts`  | `src/**/*.test.{ts,tsx}`, jsdom + Testing Library, API client mocked                    |
+| Web real-router routing | `routes/management-routing.test.tsx` | Mounts the production route table on a memory router                                    |
+
+Current verified totals at `c26a578`: **API 490 passed / 5 skipped** (5 skipped are the
+gated live e2e suites) and **Web 265 passed**. Both suites are expected to stay at or above
+these numbers; a phase that lowers a count must justify it. There is **no CI pipeline** in
+this repository — these gates are run locally and the results are recorded here and in the
+phase reports.
+
+Conventions:
+
+- Tests assert behaviour and authorization outcomes, not implementation details. RBAC and
+  branch-isolation tests are first-class, not optional.
+- Do not weaken an existing assertion to make a change pass. If behaviour genuinely changes,
+  change the test deliberately and say so.
+- Coverage that matters most here: role/branch denial paths, ownership 404s, idempotency,
+  audit emission, and the routing/guard matrix.
+
+---
+
+## 20. Git workflow, line endings, environment & security
+
+### Git workflow
+
+- `main` is the integration branch. Phases are developed one at a time, in order, and are not
+  run ahead of each other.
+- One phase = one commit with a descriptive subject. Do not mix unrelated changes.
+- Review `git status`, `git diff` and `git log --oneline -10` before committing; stage only
+  intended files.
+- Commit only when the phase's verification is green. Pushing is a separate, explicit
+  human decision.
+- Never commit `.env`, secrets, `node_modules`, `dist`, generated Prisma client, or
+  temporary analysis artifacts. `.env.example` placeholders are the only environment files
+  that may be tracked.
+- No amend/rebase/force-push/reset of shared history without an explicit instruction.
+- Do not run a repository-wide formatter as a side effect of an unrelated change. Format only
+  the files a phase actually touched, and only where they are not already at baseline.
+
+### Line endings (CRLF)
+
+`.gitattributes` sets `* text=auto eol=lf` and declares text formats explicitly. Text is
+stored **and** checked out as LF on every OS, which overrides `core.autocrlf=true` on a
+Windows/OneDrive checkout. This is deliberate: without it, machine-local CRLF conversion
+produced phantom "modified" entries in `git status` for byte-identical content. Any change
+that reintroduces CRLF churn in `git status` is a bug, not a real diff.
+
+### Environment configuration
+
+**Server-only environment variables** (the complete set documented in
+`apps/api/.env.example`):
+
+| Group               | Variables                                                                                                                                                                                                                                                                                                      |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP server         | `PORT`, `API_PREFIX`, `NODE_ENV`, `SERVICE_NAME`                                                                                                                                                                                                                                                               |
+| CORS                | `CORS_ORIGINS` (comma-separated; shared by the HTTP layer and the `/realtime` gateway)                                                                                                                                                                                                                         |
+| Database            | `DATABASE_URL`                                                                                                                                                                                                                                                                                                 |
+| Auth                | `JWT_SECRET`, `JWT_EXPIRES_IN`                                                                                                                                                                                                                                                                                 |
+| Checkout / payments | `PAYMENT_PROVIDER`, `DELIVERY_FEE_MINOR`, `CHECKOUT_TAX_MINOR`                                                                                                                                                                                                                                                 |
+| Media (Cloudinary)  | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`                                                                                                                                                                                                                                         |
+| Provisioning (CLI)  | `PROVISION_ADMIN_LOGIN_ID`, `PROVISION_ADMIN_PASSWORD`, `PROVISION_ADMIN_NAME`, `BRANCH_CODE`, `BRANCH_NAME`, `BRANCH_CITY`, `BRANCH_STATE`, `BRANCH_COUNTRY`, `BRANCH_ADDRESS`, `BRANCH_LATITUDE`, `BRANCH_LONGITUDE`, `BRANCH_DELIVERY_RADIUS_KM` — read only by the operator CLIs, never by the running API |
+
+There is **no** environment variable for choosing a media or KYC storage provider, and
+**no** environment variable for the private-document access TTL. Those are code, and the
+distinction matters when auditing the media layer:
+
+- `MEDIA_STORAGE_PROVIDER` and `PRIVATE_KYC_STORAGE_PROVIDER` are **NestJS dependency-
+  injection tokens** (exported symbols), not configuration. `MediaModule` and
+  `PrivateDocumentStorageModule` each provide exactly one implementation of their token,
+  and `resolveMediaStorageProvider(config)` / `resolvePrivateKycStorageProvider(config)`
+  select Cloudinary **only** when all three `CLOUDINARY_*` values are present — otherwise
+  they bind an "unavailable" provider that returns 503. The API boots either way, so media
+  misconfiguration can never take the platform down.
+- `PRIVATE_DOCUMENT_ACCESS_TTL_MS` is a **code constant** in
+  `apps/api/src/modules/media/private-document-storage.interface.ts`, defined as
+  `5 * 60 * 1000` (five minutes). It is not tunable per environment; changing the signed-URL
+  lifetime is a code change, not an ops change.
+- Likewise `MAX_PUBLIC_IMAGE_BYTES` and `MAX_PRIVATE_DOCUMENT_BYTES` are code constants
+  (`5 * 1024 * 1024`).
+
+Client variables are public by definition: only `VITE_*` values reach the browser, and the
+frontend currently reads **`VITE_API_BASE_URL` alone** (`api/client.ts` and
+`features/delivery/use-delivery-realtime.tsx`), defaulting to `/api`. It is optional in
+development because the Vite dev server proxies `/api` and `/socket.io`, and it must be set
+to the real API origin in production.
+
+Security rules:
+
+- Cloudinary, JWT and database secrets are **never** `VITE_*` variables and never appear in
+  frontend code, API responses, or logs.
+- `JWT_SECRET` is required when `NODE_ENV=production`; the server refuses to boot without
+  it. The `dev` payment provider is rejected under `NODE_ENV=production`.
+- `CORS_ORIGINS` is parsed by one fail-fast validator shared by HTTP and Socket.IO; a
+  wildcard or a non-absolute entry throws at boot, and an unset value denies cross-origin
+  (ADR-029, ADR-034).
+- Passwords are hashed with Argon2 (`@node-rs/argon2`). Hashes, one-time manager passwords,
+  payment/payout data, tokens and provider storage keys are never returned by an API.
+- The server is the only authority for prices, discounts, availability, serviceability,
+  payment verification, state transitions, and branch ownership.
+- The 401 path clears the stored session exactly once (`api/session-expiry.ts`) so
+  authenticated screens fall back to `/login` without a redirect loop.
+
+---
+
+## 21. Performance and bundle rules (Phase 12D)
+
+Phase 12D is a performance + dead-code phase, not a feature phase. Its rules:
+
+- **Measure before and after.** Record the production build (entry chunk raw + gzip, total
+  JS, chunk count, largest chunks, CSS, and whether Vite's >500 kB warning remains) before
+  changing anything, and again afterwards. Never claim an improvement the numbers do not
+  support.
+- **No mass deletion.** "No imports found" is not proof. Before deleting anything, check
+  dynamic imports, router registration, NestJS module/provider registration, decorators and
+  reflection, Prisma usage, package scripts, Vite/Vitest config, test config, CLI usage,
+  string references, CSS references, public asset paths, docs and migration history. A file
+  may be deleted only with recorded evidence; **if uncertain, keep it.**
+- Do not delete functionality because a feature is paused (see §18), and do not delete
+  Prisma migrations, models, enums or columns because static analysis sees few references.
+  Performance work must not require a schema migration; if one seems necessary, stop and
+  report instead.
+- Route-level code splitting is the primary lever: a Customer opening `/` should not
+  download Super Admin, Branch Manager or Delivery Partner code, and Recharts must not load
+  on a storefront visit.
+- Any lazy loading must use one shared, accessible loading experience and must preserve
+  guards: no blank screen, no auth flash, no wrong-role dashboard flash, no redirect loops,
+  and working deep links.
+- Realtime and analytics may be isolated, never removed. Do not break socket lifecycle,
+  order realtime, management realtime, or Partner tracking.
+- No dependency upgrades and no major-version changes in a performance phase. Remove a
+  dependency only with proof it is unused by source, scripts, config, tests and build
+  tooling. Temporary analysis tooling must not stay in `package.json`.
+- Static-asset work must check public-path/string references before removing anything, and
+  must not touch the Cloudinary architecture.
+- Backend work in this phase is limited to provably dead code. Do not change API behaviour,
+  authorization, or database queries for performance without measured evidence; report
+  larger backend opportunities for a future phase instead.
+
+Known starting point (measured at `c26a578` by a production build, and re-measured
+identically during the Phase 12C documentation pass): a **single** JavaScript chunk of
+`992.16 kB` raw / `276.58 kB` gzip, plus `35.44 kB` / `7.14 kB` gzip of CSS, from 719
+transformed modules. The Vite >500 kB chunk warning is still emitted.
+
+Two structural facts make that chunk largely avoidable, and both are verifiable from source
+rather than from a bundle report:
+
+- `recharts` is imported in exactly **two** files, `pages/admin/AdminOverviewPage.tsx` and
+  `pages/admin/AdminReportsPage.tsx` — both Super Admin only.
+- `socket.io-client` is imported in exactly **one** file,
+  `features/delivery/use-delivery-realtime.tsx`, reached only from the Delivery Partner home
+  and the customer order-tracking section.
+
+`AppRoutes.tsx` imports every page statically: there is no `React.lazy`, no dynamic
+`import()` and no `Suspense` anywhere in `apps/web/src`, so a customer visiting `/` currently
+downloads Super Admin, Branch Manager and Delivery Partner code and Recharts with it. No
+per-package byte attribution is claimed here, because producing one would require analysis
+tooling this phase is not allowed to add. Chunk-splitting and dead-code results belong to the
+Phase 12D completion report, not to this document.
+
+---
+
+## 22. Architectural invariants
+
+These hold regardless of phase. A change that breaks one is a regression even if every test
+passes.
+
+1. **Multi-branch is architectural.** No branch name, id, city, radius or branch-specific
+   literal in code, routes, queries or UI. Branch data is rows; a new branch is a data
+   change.
+2. **Global vs branch data stays separated.** `Product`/`Category`/`ProductImage` are HQ-owned;
+   price, discount, availability, status and now branch media are `BranchProduct`-owned.
+3. **Delivery radius is configuration** (`branch.deliveryRadiusKm`), never a constant.
+4. **One application, four roles, one auth flow.** After login, route to the role's
+   experience. Never build a separate app per role.
+5. **The server is the authority** for authorization, branch ownership, money, discounts,
+   availability, serviceability, payment verification and state transitions.
+6. **Branch isolation is enforced server-side** on every branch-scoped read and write, and
+   foreign resources are 404 rather than 403.
+7. **No destructive operations** — no hard delete where a soft status exists, no
+   `DROP`/`TRUNCATE`/history rewrite in a migration, no edit to an already-applied migration.
+8. **Audit what changes state**, with the branch id where the resource is branch-scoped.
+9. **Contracts live in `packages/shared`** and are consumed type-only from the built package.
+10. **Secrets stay server-side**; `.env` is never committed and never read by tooling that
+    does not need it.
+11. **Phases run in order** and one phase does not implement a later phase's feature early.
+
+---
+
+## 23. DO / DON'T rules
+
+**DO**
+
+- Read `AGENTS.md` and this document before changing architecture.
+- Verify with typecheck, lint, tests, build, and Prisma validate/status before committing.
+- Record a short ADR at the bottom of this document for each architectural decision.
+- Prefer configuration and data over new code paths for anything branch-specific.
+- Keep authorization decisions on the server and make them explicit in tests.
+- Keep paused features working; isolate them instead of deleting them.
+- Write down measured before/after numbers for performance work.
+
+**DON'T**
+
+- Don't hard-code a branch, city, radius, price, or demo credential into source.
+- Don't trust the client for authorization, pricing, availability or payment state.
+- Don't expose `providerPublicId`, `resourceType`, password hashes, tokens or KYC URLs.
+- Don't delete code because grep found no import — prove it first, and keep it when unsure.
+- Don't delete Delivery Partner capability, Prisma migrations, or Customer authentication
+  (Phase 13A owns that).
+- Don't redesign the Customer website before the user provides the design.
+- Don't add dependencies (data-fetching, forms, validation) without a documented reason and
+  an ADR.
+- Don't upgrade dependencies or change major versions as a side effect of another task.
+- Don't deploy, push, amend, rebase or force-push without an explicit instruction.
+- Don't run a repository-wide format sweep to make a diff look tidy.
+- Don't start the next phase early, and don't skip the verification the current phase
+  requires.
+
+---
+
+## 24. Roadmap (not committed work)
+
+Ordered, and explicitly not implemented yet:
+
+- **Phase 12D** — dead-code cleanup and production bundle optimization (§21).
+- **Phase 13A** — Customer guest commerce: guest browsing/cart/checkout/tracking and the
+  customer-auth change (§17).
+- **Phase 13B+** — the user-provided Customer website design.
+- Production payment gateway replacing the `dev` provider (COD stays).
+- Refund **actions** (requires a schema change; refund _reporting_ already exists).
+- Promotions/coupons, payouts and settlement.
+- App-wide UI consistency for Customer and Delivery Partner, `ConfirmDialog`/icon
+  reorganization, and a shared ESM runtime build for `packages/shared`.
+- Deployment of the web app to Railway (the API service is configured; the frontend is not
+  yet served there).
+
+Deliberately **not** on this list, because each is already true today rather than planned:
+
+- A notifications **UI**. `GET /api/notifications`, `POST /api/notifications/:id/read` and
+  `POST /api/notifications/read-all` exist and are open to all four roles, and order/delivery
+  events write the records — but there is no `notificationsApi` in `apps/web/src/api/client.ts`
+  and no notification screen anywhere in the app. Exposing an existing API is not a
+  "documented feature"; the UI is unbuilt.
+- CI. There is no workflow, pipeline or hosted test configuration in the repository; the
+  gates in §19 are run manually from the command line.
+
+---
+
 ## Decision log
 
 - **2026-09 / ADR-001 ORM:** Prisma (above).
@@ -419,8 +1133,8 @@ Order-related kinds: `ORDER_CREATED`, `PAYMENT_INITIATED`, `PAYMENT_VERIFIED`,
   runtime code gets a build step before shipping runtime values.
 - **2026-09 / ADR-003 Shared package builds to `dist`:** shared emits declaration files
   (`tsc --emitDeclarationOnly`) and both apps consume the built package (no shared source in
-  app compilation). Phase 1 imports are type-only; shared has no `main` until a runtime
-  build step is added.
+  app compilation). Imports are type-only — still the case today (see §2) — and shared has no
+  `main` until a runtime build step is added.
 - **2026-09 / ADR-004 Money as integer minor units (paise):** `priceMinor`/`discountMinor`
   integers avoid float drift; server computes `effectivePriceMinor`.
 - **2026-09 / ADR-005 Enumeration-safe login:** generic `Invalid credentials` for every
@@ -458,8 +1172,9 @@ Order-related kinds: `ORDER_CREATED`, `PAYMENT_INITIATED`, `PAYMENT_VERIFIED`,
   at order time and are never recomputed from current catalog/address data, so the order is
   a stable legal/business record.
 - **2026-09 / ADR-016 Order state machine with per-status timestamps:** a strict forward
-  graph (`PLACED `+' CONFIRMED `+' PREPARING `+' READY_FOR_PICKUP `+' OUT_FOR_DELIVERY `+' DELIVERED`)
-plus explicit cancel windows, recorded as append-only `OrderEvent`rows and`*At` timestamp columns that accommodate the Phase 5 delivery-assignment segment without
+  graph (`PLACED` → `CONFIRMED` → `PREPARING` → `READY_FOR_PICKUP` → `OUT_FOR_DELIVERY` →
+  `DELIVERED`) plus explicit cancel windows, recorded as append-only `OrderEvent` rows and
+  `*At` timestamp columns that accommodate the Phase 5 delivery-assignment segment without
   remodeling.
 - **2026-09 / ADR-020 Branch catalog edits stay branch-row-owned:** manager catalog
   PATCH/DELETE target a `BranchProduct` row scoped to the caller's branch; the service
@@ -604,6 +1319,65 @@ true, width: 800, crop: 'limit', f_auto, q_auto })`; `providerPublicId`/`resourc
   only storage facts (`storageProvider`, `providerPublicId`, `resourceType`, `format`,
   `fileSize`) plus review state; list/status contracts expose presence booleans and statuses,
   never Aadhaar/licence numbers, references, or URLs. Delivered in Phase 10D.
+- **2026-09 / ADR-055 The client-side role mirror is UX-only, never authorization:**
+  `canRoleAccessPath` / `resolvePostLoginPath` exist so a stale bookmark or a post-login
+  redirect cannot drop a user onto another role's screen. They read no secret and grant
+  nothing — the API `RolesGuard` (plus per-request status revalidation) and
+  `BranchScopeGuard` remain authoritative on every request, and a client that skipped them
+  would still be rejected server-side. Delivered in Phase 12B.
+- **2026-09 / ADR-056 One management entry, and legacy `/manager` is redirect-only:**
+  management has a single entry (`/admin`) and a single login experience
+  (`ManagementLoginPage`); the role-aware dashboard lives at `/admin/dashboard` and is
+  chosen from the authenticated role. The retired `/manager` tree renders no UI of its
+  own — it maps to `/admin/branch/...` (or the dashboard) and bounces unauthenticated
+  visitors to the management login carrying their destination, which removes the second
+  login surface and makes a redirect loop structurally impossible. Delivered in Phase 12B.
+- **2026-09 / ADR-057 Branch media is a branch-owned entity, not extra global images:**
+  `BranchProductImage` hangs off `BranchProduct` (cascade delete) instead of adding rows to
+  the HQ-owned `ProductImage` table. Two managers at different branches can therefore show
+  different pictures for the same global product, the manager's write is authorized purely
+  by the stored `branchId` on the branch product, and global media stays a purely
+  `SUPER_ADMIN` surface with no partial write path. The same storage abstraction, byte-level
+  validator, 3-image cap, single-primary invariant, `FOR UPDATE` locking, best-effort remote
+  cleanup and storage-key-free contracts as Phase 10C apply unchanged. Delivered in Phase
+  12C.
+- **2026-09 / ADR-058 One canonical image resolver, used by every customer-visible surface:**
+  `resolveCatalogImageUrl` (branch primary/first → global primary/first → category → null) is
+  the single decision point, consumed by the catalogue list, product detail, the
+  `BranchProduct` DTO, cart lines and checkout lines. Resolving per surface is what allowed
+  a cart or checkout thumbnail to disagree with the product grid; a shared function makes
+  that divergence impossible by construction rather than by convention. Delivered in Phase
+  12C.
+- **2026-09 / ADR-059 The public product detail keeps the global HQ gallery:** branch imagery
+  reaches customers only through the canonical `imageUrl`; `CatalogProductDetail.images`
+  stays the HQ-owned gallery. A branch-aware public gallery would make a public contract
+  branch-shaped for no customer benefit while managers already get the full explanation via
+  `BranchProductDto.branchImages` + `globalImages`. Delivered in Phase 12C.
+- **2026-09 / ADR-060 Global media mutations stay `SUPER_ADMIN`-only:** the products and
+  categories media routes keep their explicit method-level `@Roles('SUPER_ADMIN')` even
+  though branch media is now manager-editable. Widening HQ media would let one branch
+  restyle a shared product for every branch, which contradicts ADR-025. Delivered in Phase
+  12C.
+- **2026-09 / ADR-061 Management UI is built on a shared component foundation:** `Button`
+  (with role-appropriate variants), `Dialog`/`ConfirmDialog`, `Notice`, `LoadingState`,
+  `StatusBadge`, `EmptyState`, `ImageField`, `FilterChips` and `AuditLogPanel` are shared
+  primitives, so loading, error, empty, confirmation, status and media-picker behaviour is
+  defined once and reused by admin, manager and customer surfaces instead of being
+  re-implemented per page. The primitives are deliberately brand-palette-driven and
+  role-neutral so the future Customer design can replace usage without forking behaviour.
+  Delivered in Phase 11B and extended through 11C/11D.
+- **2026-09 / ADR-062 Dead code is removed only on recorded evidence, and a deliberate keep
+  is a decision:** Phase 11D removed verifiably unreferenced web files/exports and recorded
+  what was checked. Two candidates were explicitly **kept** after review: `ErrorState` (a
+  Phase 11B foundation component with tests, but no semantically correct admin/manager call
+  site — the real sites correctly use inline `Notice`/`EmptyState`), and the `.gitkeep`
+  placeholders (an earlier pass had deleted them and they were restored as unrelated churn).
+  Re-litigating a documented keep in a later phase requires new evidence, not a fresh grep.
+  Delivered in Phase 11D.
+
+ADR numbers 017–019 and 037–040 were never recorded in this file (those phases' decisions
+were captured in their phase reports instead). The gap is intentional — do not reuse those
+numbers for new decisions; continue from ADR-062.
 
 ---
 
@@ -716,11 +1490,10 @@ enforcement on multiple COD rows (see ADR-042).
 Verified green: **API 345 passed / 5 skipped (40 files), Web 109 passed (16 files)**,
 typecheck, lint, full build, and `prisma validate`. The migration
 `20260924184622_phase6_cash_on_delivery` was applied with the safe `migrate dev --create-only`
-
-- `prisma migrate deploy` flow (it also folds in the previously-unmigrated `AuditEvent`
-  branch `FK` and the `PartnerIdCounter` default; see ADR-041). `migration_lock.toml` is now
-  present. Nothing committed in Phase 10B (baseline `cc0c5fa`); see
-  `docs/phase-10b-report.md` and ADRs 41–42.
+→ `prisma migrate deploy` flow (it also folds in the previously-unmigrated `AuditEvent`
+branch `FK` and the `PartnerIdCounter` default; see ADR-041). `migration_lock.toml` is now
+present. Nothing committed in Phase 10B (baseline `cc0c5fa`); see
+`docs/phase-10b-report.md` and ADRs 41–42.
 
 ## Phase 10C status (complete)
 
@@ -775,5 +1548,64 @@ with `prisma migrate deploy`. Audit kinds add
 contracts add type-only `kyc.ts` (`KycStatusDto`, `KycListItemDto`, `KycReviewInput`,
 `KycDocumentAccessDto`, …). Verified green: **API 440 passed / 5 skipped (44 files), Web 136
 passed (19 files)**, typecheck, lint, full build, `prisma validate`, and `prisma migrate
-status` (up to date, 7 migrations). Cloudinary credentials stay server-only; nothing
+  status` (up to date, 7 migrations). Cloudinary credentials stay server-only; nothing
 committed in Phase 10D (baseline `da2f469`); see `docs/phase-10d-report.md` and ADRs 48–54.
+
+## Phase 10E status (complete)
+
+Phase 10E was an **acceptance and audit** phase over 10B (COD), 10C (public media) and 10D
+(private KYC): it re-verified the migration chain, the RBAC and branch-isolation boundaries,
+the media/KYC storage architecture and the secret-handling posture, and repaired three
+confirmed public-media defects it found. No new capability and no schema change. Full
+checklist, honesty labels (`CODE REVIEW VERIFIED` / `AUTOMATED TEST VERIFIED` /
+`NOT LIVE-TESTED`) and known limitations are in `docs/phase-10e-acceptance-report.md`.
+Still open from that phase: the production payment gateway and the live-database e2e runs,
+which require a provisioned environment and real provider credentials.
+
+## Phase 11 status (complete) — production-quality UI hardening
+
+Phase 11 is a UI-hardening track across all four roles, delivered in three commits and
+migration-free.
+
+- **11B — shared UI foundation.** The reusable primitives both apps now build on:
+  `Button` (variants), `Dialog`, `ConfirmDialog`, `Notice`, `LoadingState`, `StatusBadge`,
+  `EmptyState`, `ErrorState`, `PageHeader`, `ProductImage`, the `forms/` field set, plus
+  `lib/money.ts` for minor-unit formatting. Established the rule that loading, error, empty,
+  status, confirmation and money rendering are defined once (ADR-061).
+- **11C — customer production experience.** The Customer storefront, cart, checkout, orders
+  and addresses rebuilt on those primitives with mobile-first layout, large touch targets,
+  real empty/loading/error states and accessible labels. **No business behaviour changed** —
+  the API contracts, RBAC and branch isolation were untouched.
+- **11D — Admin + Manager shared UI consistency.** Admin and Manager pages converted to the
+  shared components; extracted `FilterChips` and a reusable `AuditLogPanel` (so
+  `AdminAuditPage`/`ManagerAuditPage` are thin role wrappers); centralised date formatting
+  in `lib/format.ts`; split the realtime indicator so the customer tracking section reuses
+  an existing socket instead of opening a second one; removed verified-dead web code; and
+  kept `ErrorState` and the `.gitkeep` placeholders deliberately (ADR-062). Delivery report:
+  `docs/phase-11d-report.md`.
+
+Across Phase 11 no Prisma schema change, no migration, no endpoint change, and no change to
+the Customer design direction. One pre-existing Vite large-chunk warning was carried
+forward and left for Phase 12D.
+
+## Phase 12 status (complete) — management architecture and management media
+
+- **12B — management routing architecture.** `/admin` is the single management entry with a
+  single management login; `/admin/dashboard` is role-aware; the 7 Super Admin and 6 Branch
+  Manager segments (8 branch routes, counting the order and partner detail pages) are defined
+  once in `routes/paths.ts`; the retired `/manager` tree became redirect-only; and
+  `routes/management-routing.test.tsx` exercises the real route table (guards, deep links,
+  role refusals, legacy mapping, no-loop). See §14 and ADR-055 / ADR-056. Migration-free; no
+  URL was renamed in a breaking way — legacy URLs redirect.
+- **12C — management catalogue media.** `BranchProductImage` plus the four branch media
+  endpoints, the shared `ImageField` picker, the Super Admin product/category media flows
+  and the Branch Manager branch-media flow with HQ images read-only, and the single
+  canonical image resolver consumed by catalogue, cart and checkout. See §15 and ADR-057
+  through ADR-060. Migration `20261001040000_phase12c_branch_product_images` is additive
+  (one table, one index, one cascading FK).
+
+Verified during the Phase 12C documentation pass: **API 490 passed / 5 skipped**, **Web 265
+passed**, typecheck, lint, `npm run build` clean and `prisma validate` clean. The migration
+chain is 8 migrations, newest `20261001040000_phase12c_branch_product_images`; live
+`prisma migrate status` was not run here because it needs a reachable `DATABASE_URL`.
+Phase 12B and Phase 12C are committed and pushed as `c26a578`.

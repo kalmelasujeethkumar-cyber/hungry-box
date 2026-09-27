@@ -1,36 +1,55 @@
 # Hungry Box
 
-Hungry Box is a production-grade, multi-branch food and snacks delivery platform. The first
-operational branch is **Guntur, Andhra Pradesh, India** (10 km delivery radius), but the
-system is architected from day one as a multi-branch platform: additional branches such as
-Hyderabad, Vijayawada, and Visakhapatnam can be added as **configurable data, not code
-changes**.
+Hungry Box is a production-grade, multi-branch **snacks and shakes** delivery platform. It is
+not a general restaurant marketplace. The first operational branch is **Guntur, Andhra
+Pradesh, India** (10 km delivery radius), but the system is architected from day one as a
+multi-branch platform: additional branches such as Hyderabad, Vijayawada, and Visakhapatnam
+can be added as **configurable data, not code changes**.
 
 ## Roles
 
 One application, one authentication flow, role-based routing after login:
 
-| Role               | Scope                                                               |
-| ------------------ | ------------------------------------------------------------------- |
-| `SUPER_ADMIN`      | Global access across all branches (branches, users, analytics, ...) |
-| `BRANCH_MANAGER`   | Own assigned branch only (products, pricing, orders, partners)      |
-| `DELIVERY_PARTNER` | Assigned operational scope (pickups, deliveries, earnings)          |
-| `CUSTOMER`         | Buyer experience (browse, cart, checkout, track, history)           |
+| Role               | Scope                                                                                    |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| `SUPER_ADMIN`      | Global access across all branches (branches, users, analytics, ...)                      |
+| `BRANCH_MANAGER`   | Own assigned branch only (products, pricing, orders, partners)                           |
+| `DELIVERY_PARTNER` | Assigned operational scope (pickups, deliveries, earnings) — **paused, kept for future** |
+| `CUSTOMER`         | Buyer experience (browse, cart, checkout, track, history)                                |
+
+Management has a **single entry point** at `/admin` (one management login) with a role-aware
+dashboard at `/admin/dashboard`. The retired `/manager` URLs are redirect-only. The full route
+table is in `docs/architecture.md` §14.
 
 ## Project status
 
-**Phase 11D - Admin + Manager shared UI consistency (current).** Phase 11 is a production-quality
-UI hardening track: Phase 11B introduced the shared UI foundation (`Button`, `Dialog`, `Notice`,
-`LoadingState`, `StatusBadge`, ...), Phase 11C applied it to the customer experience, and Phase 11D
-applies it to the Super Admin and Branch Manager surfaces. Phase 11D standardizes filters, buttons,
-status badges, loading/error states, date formatting, and audit-log rendering across Admin/Manager
-pages; extracts shared audit and filter primitives; and removes verified-dead web code. The live
-delivery, checkout/payments/orders, manager operations, and customer experiences all remain green
-(192/192 web tests). Phases 8-10 delivered end-to-end integration hardening, deployment readiness,
-COD, public catalog media, and private KYC documents (see `docs/phase-8-report.md` through
-`docs/phase-10e-acceptance-report.md`); Phase 11D is delivered **migration-free** - no schema change.
-See `docs/phase-11d-report.md` for the delivery report. What remains is refund actions (requires a
-schema change), promotions, payouts, and customer/delivery app-wide UI consistency.
+**Phase 12C complete (checkpoint `c26a578`).** Phase 11 was a production-quality UI hardening
+track (11B shared component foundation, 11C customer experience, 11D Admin/Manager
+consistency). Phase 12 covered management architecture: **12B** established `/admin` as the
+single management entry with redirect-only legacy `/manager` handling and real-router tests;
+**12C** added branch-owned catalogue media (`BranchProductImage`, Branch Manager media
+controls, HQ media read-only for a branch) and a single canonical image resolver shared by the
+storefront, cart and checkout.
+
+Verified at `c26a578`: **API 490 passed / 5 skipped**, **Web 265 passed**, typecheck, lint and
+build clean, and `prisma validate` clean. The schema carries 25 models and 14 enums across 8
+migrations (newest `20261001040000_phase12c_branch_product_images`); live
+`prisma migrate status` was not run in this environment.
+
+Earlier phases delivered identity/RBAC, storefront + addresses + cart, checkout/payments/orders,
+live delivery, Branch Manager and Super Admin operations, deployment readiness, COD, public
+catalogue media, private partner KYC, and final acceptance (see `docs/phase-6-report.md`
+through `docs/phase-10e-acceptance-report.md` and `docs/phase-11d-report.md`).
+
+**Not yet done, by design:**
+
+- **Delivery Partner is PAUSED — kept for future.** It is fully implemented and must not be
+  deleted or redesigned; it may only be code-split so customers do not download it.
+- **Customer authentication is still required.** Guest commerce belongs to Phase 13A.
+- **The final Customer website design has not been decided** — the user will provide it. The
+  current pages are production-quality but are not the final design; do not redesign them
+  independently.
+- Payments use the `dev` simulator; a production gateway is not integrated. COD is live.
 
 ## Technology stack
 
@@ -78,8 +97,8 @@ docker compose up -d        # starts Postgres on localhost:5432 (db: hungrybox)
 ```
 
 If you already run Postgres, skip Docker and point `DATABASE_URL` at your instance.
-The API boots and serves `/api/health` without a database; authenticated endpoints report
-`Service Unavailable` until the database is configured.
+The API boots and serves `/api/health` without a database; endpoints that need one report
+`503 Service Unavailable` until `DATABASE_URL` is configured.
 
 ### Database setup (Phase 2+)
 
@@ -101,10 +120,19 @@ run automatically on server start.
 
 Copy the example files and fill in local values (never commit real secrets):
 
-- `apps/api/.env.example` → `apps/api/.env` (`PORT`, `API_PREFIX`, `CORS_ORIGINS`,
-  `DATABASE_URL`)
-- `apps/web/.env.example` → `apps/web/.env` (only public `VITE_*` values belong here;
-  none are required yet)
+- `apps/api/.env.example` → `apps/api/.env`. Server-only variables: `PORT`, `API_PREFIX`,
+  `NODE_ENV`, `SERVICE_NAME`, `CORS_ORIGINS`, `DATABASE_URL`, `JWT_SECRET`,
+  `JWT_EXPIRES_IN`, `PAYMENT_PROVIDER`, `DELIVERY_FEE_MINOR`, `CHECKOUT_TAX_MINOR`, and the
+  three `CLOUDINARY_*` media credentials. A commented block also documents the
+  operator-only `PROVISION_*` / `BRANCH_*` values read by `provision:admin` and
+  `provision:branch`; the running API never reads them.
+- `apps/web/.env.example` → `apps/web/.env`. Only public `VITE_*` values belong here, and
+  there is exactly one: **`VITE_API_BASE_URL`**, which defaults to `/api`. It may be left
+  unset in development (the Vite dev server proxies `/api` and `/socket.io`), and must be
+  set to the real API origin in production.
+
+Media provider selection and the private-document access TTL are **code, not configuration**
+— see `docs/architecture.md` §20.
 
 `DATABASE_URL` must come from environment variables. `.env*` files are git-ignored; only
 `.env.example` placeholders are committed.
@@ -117,21 +145,36 @@ Run from the repository root:
 npm run dev:web              # frontend dev server (http://localhost:5173)
 npm run dev:api              # API dev server (watch, http://localhost:3000/api)
 npm run build                # build shared → api → web
-npm run typecheck            # typecheck shared/api/web
+npm run typecheck            # typecheck shared/api/web (tsc --noEmit)
 npm run lint                 # lint api + web
 npm run format               # prettier --write
 npm run format:check         # prettier --check
-npm run db:generate          # prisma generate
-npm run db:studio            # prisma studio
-npm run db:migrate           # prisma migrate dev
-npm run db:seed              # prisma db seed (demo data, requires DATABASE_URL)
 npm run test                 # api unit tests + web unit tests
 npm run test:api             # api unit tests only
 npm run test:web             # web unit tests only
+npm run db:generate          # prisma generate
+npm run db:migrate           # prisma migrate dev
+npm run db:deploy            # prisma migrate deploy (what Railway runs pre-deploy)
+npm run db:studio            # prisma studio
+npm run db:seed              # prisma db seed (demo data, requires DATABASE_URL)
+npm run start:api            # run the compiled API (node dist/main.js)
+npm run provision:admin      # operator CLI: create the first SUPER_ADMIN (refuse-by-default)
+npm run provision:branch     # operator CLI: create the first branch (refuse-by-default)
 ```
 
-The backend health check (no database required): `GET http://localhost:3000/api/health`
-returns service, version, uptime, timestamp, and database status.
+`npm run build` is the deploy build (the web workspace's build also type-checks before
+`vite build`); `npm run typecheck` is the explicit type gate. The API workspace rebuilds the
+shared package and regenerates the Prisma client in its own `prebuild`/`pretypecheck`, so
+both paths stay self-contained.
+
+There is **no CI pipeline** in this repository — these gates are run locally and recorded in
+the phase reports.
+
+The backend health check needs no database to answer:
+`GET http://localhost:3000/api/health` returns service, version, uptime, timestamp and
+database status (`unconfigured` / `connected` / `unreachable`) — **200** when the database is
+connected, **503** when degraded. Endpoints that need the database fail with
+`503 Service Unavailable` until `DATABASE_URL` is configured.
 
 ## Phase 2 endpoints (summary)
 
@@ -174,14 +217,14 @@ database; the frontend suite uses `jsdom` + Testing Library (API client mocked).
 
 Added in Phase 4 (all Bearer JWT):
 
-| Endpoint                                                                                                                                  | Access                                        |
-| ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `POST /api/checkout/preview`                                                                                                              | `CUSTOMER`                                    |
-| `POST /api/checkout/payment-intent`                                                                                                       | `CUSTOMER`                                    |
-| `POST /api/payments/verify`                                                                                                               | `CUSTOMER`                                    |
-| `POST /api/payments/dev/simulate`                                                                                                         | Dev simulator (explicitly dev-only)           |
-| `POST /api/orders` (idempotent), `GET /api/orders`, `GET/POST /api/orders/:id/cancel`                                                     | `CUSTOMER`                                    |
-| `GET`/`POST /api/branch/orders`, `GET /api/branch/orders/:id`, `POST /api/branch/orders/:id/status`, `POST /api/branch/orders/:id/cancel` | `SUPER_ADMIN` / `BRANCH_MANAGER` (own branch) |
+| Endpoint                                                                                                                                  | Access                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `POST /api/checkout/preview`                                                                                                              | `CUSTOMER`                                                                       |
+| `POST /api/checkout/payment-intent`                                                                                                       | `CUSTOMER`                                                                       |
+| `POST /api/payments/verify`                                                                                                               | `CUSTOMER`                                                                       |
+| `POST /api/payments/dev/simulate`                                                                                                         | `CUSTOMER`, and only usable while the `dev` simulator is the configured provider |
+| `POST /api/orders` (idempotent), `GET /api/orders`, `GET/POST /api/orders/:id/cancel`                                                     | `CUSTOMER`                                                                       |
+| `GET`/`POST /api/branch/orders`, `GET /api/branch/orders/:id`, `POST /api/branch/orders/:id/status`, `POST /api/branch/orders/:id/cancel` | `SUPER_ADMIN` / `BRANCH_MANAGER` (own branch)                                    |
 
 Checkout amounts are always server-derived (a 409 conflict carries the fresh `preview` when
 prices/availability changed), payments are verified server-side through the
@@ -221,14 +264,61 @@ Added in Phase 7 (all Bearer JWT; `SUPER_ADMIN` unless noted):
 | `GET`/`POST`/`PATCH /api/products` (+ `PATCH /:id/status`, image routes) | Global product management (no physical deletes)             |
 | `GET`/`POST`/`PATCH /api/categories`                                     | Global category management (soft status changes)            |
 | `GET /api/branch/orders`                                                 | Global order list (branch/status/date filters; Super Admin) |
-| `GET /api/delivery-partners`                                             | Partner list widened w/ branch filter (Super Admin)         |
+| `GET /api/branch/partners`                                               | Partner list widened w/ branch filter (Super Admin)         |
 | `GET /api/branch/audit`, `/api/branch/audit/export`                      | Global audit explorer + CSV (new Phase 7 kinds queryable)   |
 | `GET /api/admin/dashboard`                                               | Analytics summary (branch/date/bucket filters)              |
 | `GET /api/admin/reports/orders`                                          | Orders report CSV (branch/date/status filters)              |
 
+There is **no** `GET /api/delivery-partners` route. Partner reads live under the branch
+prefix: `GET /api/branch/partners` (and `GET /api/branch/partners/:partnerId`,
+`GET /api/branch/partners/candidates`) are open to `SUPER_ADMIN` **and**
+`BRANCH_MANAGER`, with a manager pinned to their own branch; the partner's own surface is
+`GET /api/delivery/profile`.
+
 Phase 7 was delivered without any schema migration — it reuses existing columns and
 entities; refund/analytics reporting derives from `Payment.status` (read-only; refund
 **actions** are a later-phase schema change).
+
+## Phase 10 endpoints (summary)
+
+Media and KYC, added in Phases 10B–10D (all Bearer JWT):
+
+| Endpoint                                                                                                                       | Access                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `POST /api/products/:id/images`, `PATCH .../images/reorder`, `PATCH .../images/:imageId/primary`, `DELETE .../images/:imageId` | `SUPER_ADMIN`                                                  |
+| `POST /api/categories/:id/image`, `DELETE /api/categories/:id/image`                                                           | `SUPER_ADMIN`                                                  |
+| `GET /api/delivery/kyc`, `POST /api/delivery/kyc/documents`, `POST /api/delivery/kyc/documents/:type/access`                   | `DELIVERY_PARTNER` (own documents)                             |
+| `GET /api/branch/kyc`, `GET /api/branch/kyc/:partnerId`, `POST /api/branch/kyc/:partnerId/documents/:type/access`              | `SUPER_ADMIN`, `BRANCH_MANAGER`                                |
+| `POST /api/branch/kyc/:partnerId/documents/:type/review`                                                                       | `BRANCH_MANAGER` (partner's branch only)                       |
+| `POST /api/orders/cod`                                                                                                         | `CUSTOMER` (idempotent cash-on-delivery order)                 |
+| `POST /api/branch/orders/:id/collect-cod`                                                                                      | `SUPER_ADMIN` / `BRANCH_MANAGER` (own branch, reason required) |
+
+Media upload limits are identical for global and branch media: **max 3 images** per product
+(or per branch product), **max 5 MB** each, **JPEG / PNG / WebP only** decided by byte
+signature rather than filename, MIME type or extension, and **exactly one primary** image at
+all times. KYC documents are private, magic-byte validated, backend-authorized and
+short-lived (a signed URL expiring after ~5 minutes that is never persisted). The
+Cloudinary credentials are server-only; when they are absent the API still boots and media
+requests return 503. A partner may keep uploading and re-viewing their own documents while
+under review or inactive; only a `BRANCH_MANAGER` of the partner's assigned branch may
+verify or reject a document (rejection requires a note), and Super Admin has global
+read/audit visibility but is deliberately **not** permitted to review.
+
+## Phase 12 endpoints (summary)
+
+Added in Phase 12C (all Bearer JWT; `SUPER_ADMIN`, `BRANCH_MANAGER`):
+
+| Endpoint                                             | Notes                                                                                                       |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `POST /api/branch-products/:id/images`               | Upload branch-owned media; branch derived from the stored `BranchProduct.branchId`, never from client input |
+| `PATCH /api/branch-products/images/reorder`          | Must be one complete set for one branch product                                                             |
+| `PATCH /api/branch-products/images/:imageId/primary` | Demotes the previous primary                                                                                |
+| `DELETE /api/branch-products/images/:imageId`        | Promotes the lowest-`sortOrder` survivor                                                                    |
+
+Branch media is a separate entity from the HQ `ProductImage` table, so two branches can
+show different pictures for the same global product and a manager can never write a
+`ProductImage` or a category image — those stay `SUPER_ADMIN`-only. A foreign branch
+product or image returns `404`, not `403`, so it cannot be used to probe another branch.
 
 ## Development phases
 
@@ -267,15 +357,44 @@ entities; refund/analytics reporting derives from `Payment.status` (read-only; r
   delivery-partner KYC documents, and final acceptance/hardening
   (`docs/phase-10b-report.md`, `docs/phase-10c-report.md`, `docs/phase-10d-report.md`,
   `docs/phase-10e-acceptance-report.md`).
-- **Phase 11 (in progress):** Production-quality UI hardening across all four roles.
-  - 11B (complete): shared UI foundation - `Button`, `Dialog`, `Notice`, `LoadingState`,
-    `StatusBadge`, `EmptyState`, form fields.
-  - 11C (complete): customer production experience.
-  - 11D (complete): Admin + Manager shared UI consistency - shared audit panel, filter chips,
+- **Phase 11 (complete):** Production-quality UI hardening across all four roles, delivered
+  migration-free in three commits.
+  - 11B: shared UI foundation - `Button`, `Dialog`, `ConfirmDialog`, `Notice`,
+    `LoadingState`, `StatusBadge`, `EmptyState`, `PageHeader`, `ProductImage`, form fields.
+  - 11C: customer production experience.
+  - 11D: Admin + Manager shared UI consistency - shared audit panel, filter chips,
     standardized status/loading/error states, dead-code cleanup (`docs/phase-11d-report.md`).
-- **Phase 12+:** Customer/Delivery app-wide UI consistency, `ConfirmDialog`/icons reorganization,
-  refund actions (requires a schema change), promotions, and payouts.
+- **Phase 12 (complete):** Management architecture.
+  - 12B: `/admin` as the single management entry with one management login, a role-aware
+    `/admin/dashboard`, redirect-only legacy `/manager` URLs, and real-router tests.
+  - 12C: branch-owned catalogue media (`BranchProductImage`, branch manager media controls,
+    HQ media read-only for a branch) plus one canonical image resolver shared by the
+    storefront, cart and checkout.
+- **Phase 12D (not started):** dead-code cleanup and production bundle optimization. The
+  web app is still a single ~992 kB JS chunk with no route-level code splitting; rules are in
+  `docs/architecture.md` §21.
+- **Phase 13A (not started):** Customer guest commerce — guest browsing/cart/checkout/tracking
+  and the customer-authentication change. **Customer authentication is still required today.**
+- **Not started / deferred:** the user-provided final Customer website design, a production
+  payment gateway (the `dev` simulator plus COD are live), refund actions (schema change),
+  promotions/coupons, payouts, and Customer/Delivery app-wide UI consistency.
 
 Phases are developed one at a time; the platform is built in-order, not by skipping ahead.
 
-See `docs/architecture.md` for detailed architecture and decisions.
+## Where to read more
+
+`docs/architecture.md` is the source of architectural truth:
+
+| Topic                                                     | Section            |
+| --------------------------------------------------------- | ------------------ |
+| Management routing, `/admin`, legacy `/manager`           | §14                |
+| Catalogue, `BranchProductImage`, canonical image resolver | §15                |
+| Customer experience **today**                             | §16                |
+| Customer experience **future** (not built)                | §17                |
+| Delivery Partner (paused, kept)                           | §18                |
+| Testing suites and totals                                 | §19                |
+| Git, line endings, environment, security                  | §20                |
+| Phase 12D performance rules                               | §21                |
+| Architectural invariants                                  | §22                |
+| Roadmap of uncommitted work                               | §24                |
+| Decision log (ADR-001 … ADR-062)                          | bottom of the file |
