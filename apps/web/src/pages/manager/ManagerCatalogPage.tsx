@@ -545,9 +545,10 @@ export default function ManagerCatalogPage(): JSX.Element {
         title="Hide this product?"
         description={`${deactivate?.product.name ?? 'This product'} will be hidden from customers in your branch.`}
         confirmLabel="Hide product"
+        cancelLabel="Keep visible"
         danger
         busy={busy && deactivate !== null}
-        busyLabel="Hiding…"
+        busyLabel="Hiding."
         onConfirm={submitDeactivate}
         onClose={() => setDeactivate(null)}
       />
@@ -557,6 +558,7 @@ export default function ManagerCatalogPage(): JSX.Element {
         title="Remove this branch image?"
         description="Customers at your branch will fall back to the Hungry Box image for this product."
         confirmLabel="Remove branch image"
+        cancelLabel="Keep image"
         danger
         busy={busy && removeBranchImage !== null}
         busyLabel="Removing…"

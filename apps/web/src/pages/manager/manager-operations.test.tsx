@@ -418,10 +418,13 @@ describe('manager orders', () => {
     await user.click(screen.getByRole('button', { name: 'Cash collected — record it' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Record cash collection' });
-    await user.type(
-      within(dialog).getByPlaceholderText(/Reason \(required\)/),
-      'Cash received in hand',
-    );
+    /**
+     * Queried by label, not by placeholder. The field used to carry its only description
+     * in a placeholder, which vanishes as soon as the manager types and is not reliably
+     * announced, so "reason required" was invisible to assistive tech and to anyone who
+     * had already started typing.
+     */
+    await user.type(within(dialog).getByLabelText(/Collection reason/), 'Cash received in hand');
     await user.click(within(dialog).getByRole('button', { name: 'Mark as collected' }));
 
     await waitFor(() =>
@@ -432,6 +435,57 @@ describe('manager orders', () => {
       ),
     );
     expect(await screen.findByText(/Collected .*· by branch/)).toBeInTheDocument();
+  });
+
+  it('keeps the dialog and the typed reason when a collection is rejected', async () => {
+    const codOrder: OrderDetailDto = {
+      ...orderDetail(),
+      paymentStatus: 'PENDING',
+      paymentMethod: 'COD',
+      payments: [
+        {
+          id: 'pay-cod',
+          provider: 'cod',
+          providerPaymentId: 'cod_1',
+          providerOrderId: null,
+          method: 'COD',
+          status: 'PENDING',
+          amountMinor: 43000,
+          currency: 'INR',
+          collectedAt: null,
+          collectedByRole: null,
+          collectedById: null,
+        },
+      ],
+      events: [],
+    };
+    MOCK_APIS.branchOrdersApi.get.mockResolvedValue(codOrder);
+    MOCK_APIS.branchOrdersApi.collectCod.mockRejectedValue(
+      new MOCK_APIS.ApiError('Payment already collected', 409),
+    );
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/admin/branch/orders/ord-1']}>
+        <Routes>
+          <Route path="/admin/branch/orders/:orderId" element={<ManagerOrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('HB-20260924-000001');
+    await user.click(screen.getByRole('button', { name: 'Cash collected — record it' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Record cash collection' });
+    await user.type(within(dialog).getByLabelText(/Collection reason/), 'Cash in hand');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as collected' }));
+
+    /**
+     * Regression: the dialog used to close and clear the reason from a `.finally()`, so a
+     * rejected collection silently threw away what the manager typed and showed the error
+     * on the page behind a dialog that was already gone.
+     */
+    expect(await within(dialog).findByText('Payment already collected')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Collection reason/)).toHaveValue('Cash in hand');
   });
 });
 

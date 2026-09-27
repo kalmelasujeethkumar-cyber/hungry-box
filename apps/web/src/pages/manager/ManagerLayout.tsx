@@ -49,7 +49,16 @@ function ManagedBranchLabel(): JSX.Element | null {
 
   if (!branchName) return null;
   return (
-    <span className="hidden shrink-0 rounded-full bg-brand-sky/60 px-2.5 py-0.5 text-xs font-bold text-brand-navy md:inline">
+    /**
+     * Always shown, not just from `md` up. A branch manager acts on exactly one branch, so
+     * on a tablet or phone - where the "Branch manager" role chip and the name are both
+     * hidden - the branch was the only remaining statement of which branch was being
+     * operated on, and hiding it left the whole screen without that context.
+     */
+    <span
+      title={`Managing ${branchName}`}
+      className="inline shrink-0 truncate rounded-full bg-brand-sky/60 px-2.5 py-0.5 text-xs font-bold text-brand-navy"
+    >
       {branchName}
     </span>
   );

@@ -9,6 +9,7 @@ import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { TextareaField } from '../../components/forms';
 import {
   ORDER_STATUS_LABELS,
   ORDER_STATUS_TONES,
@@ -130,14 +131,24 @@ export default function ManagerOrderDetailPage(): JSX.Element {
     setCollectError(null);
     branchOrdersApi
       .collectCod(order.id, reason, token)
-      .then(setOrder)
-      .catch((err: unknown) =>
-        setError(err instanceof ApiError ? err.message : 'Could not record the collection.'),
-      )
-      .finally(() => {
-        setBusy(false);
+      .then((updated) => {
+        setOrder(updated);
         setCollectOpen(false);
         setCollectReason('');
+      })
+      .catch((err: unknown) => {
+        /**
+         * Kept inside the dialog on purpose. Closing on failure discarded the reason the
+         * manager had already typed and pushed the failure message onto the page behind a
+         * dialog that was no longer there, so a rejected collection looked like a silent
+         * no-op and had to be retyped from scratch.
+         */
+        setCollectError(
+          err instanceof ApiError ? err.message : 'Could not record the collection.',
+        );
+      })
+      .finally(() => {
+        setBusy(false);
       });
   };
 
@@ -296,6 +307,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
         title="Cancel this order?"
         description={`${order.orderNumber} will be cancelled and the customer will be notified.`}
         confirmLabel="Cancel order"
+        cancelLabel="Keep order"
         danger
         busy={busy && cancelOpen}
         busyLabel="Cancelling…"
@@ -307,6 +319,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
         title="Record cash collection"
         description={`Mark the ${formatPaise(order.totalMinor)} cash-on-delivery payment for ${order.orderNumber} as collected.`}
         confirmLabel="Mark as collected"
+        cancelLabel="Not yet"
         busy={busy && collectOpen}
         busyLabel="Recording…"
         onConfirm={collect}
@@ -321,16 +334,19 @@ export default function ManagerOrderDetailPage(): JSX.Element {
             {collectError}
           </Notice>
         ) : null}
-        <textarea
+        <TextareaField
+          label="Collection reason"
+          required
           value={collectReason}
           onChange={(event) => {
             setCollectReason(event.target.value);
             setCollectError(null);
           }}
-          placeholder="Reason (required) — e.g. cash was collected, app failed during final step"
+          placeholder="e.g. cash was collected, app failed during final step"
           maxLength={300}
           rows={2}
-          className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-brand-teal focus:outline-none"
+          className="mt-3"
+          helper="Recorded in the audit log against your name."
         />
       </ConfirmDialog>
     </ManagerLayout>

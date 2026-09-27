@@ -1165,6 +1165,7 @@ export default function AdminCataloguePage(): JSX.Element {
         title="Deactivate this product?"
         description={`${toggleProduct?.name ?? 'This product'} will be disabled across all branches.`}
         confirmLabel="Deactivate"
+        cancelLabel="Keep active"
         danger
         onConfirm={submitDeactivateProduct}
         onClose={() => setToggleProduct(null)}
@@ -1175,6 +1176,7 @@ export default function AdminCataloguePage(): JSX.Element {
         title="Remove this image?"
         description="The image will be removed from this product."
         confirmLabel="Remove image"
+        cancelLabel="Keep image"
         danger
         onConfirm={submitRemoveImage}
         onClose={() => setRemoveImage(null)}
@@ -1191,6 +1193,7 @@ export default function AdminCataloguePage(): JSX.Element {
           toggleCategory?.status === 'ACTIVE' ? 'deactivated' : 'activated'
         } across the catalogue.`}
         confirmLabel={toggleCategory?.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+        cancelLabel={toggleCategory?.status === 'ACTIVE' ? 'Keep active' : 'Leave inactive'}
         danger={toggleCategory?.status === 'ACTIVE'}
         onConfirm={submitToggleCategory}
         onClose={() => setToggleCategory(null)}
