@@ -17,6 +17,7 @@ import {
   KYC_OVERALL_TONES,
 } from './delivery-status';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { formatBusinessDateOnly } from '../../lib/business-time';
 
 export default function ManagerKycCard({
   partnerId,
@@ -125,7 +126,7 @@ export default function ManagerKycCard({
                 ) : null}
                 {doc?.verifiedAt ? (
                   <p className="mt-1 text-xs text-emerald-600">
-                    Verified {new Date(doc.verifiedAt).toLocaleDateString()}
+                    Verified {formatBusinessDateOnly(doc.verifiedAt)}
                   </p>
                 ) : null}
               </div>

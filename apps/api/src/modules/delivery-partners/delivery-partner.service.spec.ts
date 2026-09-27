@@ -114,6 +114,7 @@ function baseDb() {
       findFirst: vi.fn().mockResolvedValue(partnerSource()),
       findFirstOrThrow: vi.fn().mockResolvedValue(partnerSource()),
       findMany: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
       create: vi.fn().mockResolvedValue({ id: 'p1' }),
       update: vi.fn().mockResolvedValue(partnerSource()),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -242,19 +243,22 @@ describe('DeliveryPartnerService.list', () => {
         branch: BRANCH,
       },
     ]);
+    db.deliveryPartnerProfile.count.mockResolvedValue(1);
 
-    const rows = await service.list(manager, {});
+    const result = await service.list(manager, {});
 
     expect(db.deliveryPartnerProfile.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ branchId: 'b1' }) }),
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.partnerId).toBe('HB-DP-000042');
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.partnerId).toBe('HB-DP-000042');
+    expect(result.total).toBe(1);
   });
 
   it('applies search, status, availability and pagination filters for super admin', async () => {
     const { service, db } = buildService();
     db.deliveryPartnerProfile.findMany.mockResolvedValue([]);
+    db.deliveryPartnerProfile.count.mockResolvedValue(0);
 
     await service.list(superAdmin, {
       search: 'shiva',
@@ -276,15 +280,89 @@ describe('DeliveryPartnerService.list', () => {
     );
   });
 
+  it('searches name and partner id exactly once each', async () => {
+    const { service, db } = buildService();
+    db.deliveryPartnerProfile.findMany.mockResolvedValue([]);
+    db.deliveryPartnerProfile.count.mockResolvedValue(0);
+
+    await service.list(superAdmin, { search: 'shiva' });
+
+    const call = db.deliveryPartnerProfile.findMany.mock.calls[0]?.[0] as {
+      where: { OR: unknown[] };
+    };
+    expect(call.where.OR).toHaveLength(2);
+  });
+
+  it('orders by createdAt then id so paging cannot repeat a partner', async () => {
+    const { service, db } = buildService();
+    db.deliveryPartnerProfile.findMany.mockResolvedValue([]);
+    db.deliveryPartnerProfile.count.mockResolvedValue(0);
+
+    await service.list(superAdmin, {});
+
+    expect(db.deliveryPartnerProfile.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }),
+    );
+  });
+
+  it('reports the full filtered total so the UI can show more than one page', async () => {
+    const { service, db } = buildService();
+    db.deliveryPartnerProfile.findMany.mockResolvedValue([]);
+    db.deliveryPartnerProfile.count.mockResolvedValue(312);
+
+    const result = await service.list(superAdmin, {});
+
+    expect(result).toEqual({ items: [], total: 312, limit: 50, offset: 0 });
+    expect(db.deliveryPartnerProfile.count).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {} }),
+    );
+  });
+
   it('lets a super admin scope the list to a chosen branch', async () => {
     const { service, db } = buildService();
     db.deliveryPartnerProfile.findMany.mockResolvedValue([]);
+    db.deliveryPartnerProfile.count.mockResolvedValue(0);
 
     await service.list(superAdmin, { branchId: 'b2' });
 
     expect(db.deliveryPartnerProfile.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ branchId: 'b2' }) }),
     );
+  });
+
+  it('scopes the reported total to the manager branch, not just the rows', async () => {
+    const { service, db } = buildService();
+    db.deliveryPartnerProfile.findMany.mockResolvedValue([]);
+    db.deliveryPartnerProfile.count.mockResolvedValue(7);
+
+    await service.list(manager, { branchId: 'b9' });
+
+    /**
+     * count() is a separate query from findMany(), so scoping only the rows would leave the
+     * total counting the whole fleet. The pagination would then promise pages that do not
+     * exist and report another branch's headcount as this manager's.
+     */
+    expect(db.deliveryPartnerProfile.count).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ branchId: 'b1' }) }),
+    );
+    const rowWhere = db.deliveryPartnerProfile.findMany.mock.calls[0][0].where;
+    expect(rowWhere.branchId).toBe('b1');
+  });
+
+  it('keeps the total consistent with the rows under a search filter', async () => {
+    const { service, db } = buildService();
+    db.deliveryPartnerProfile.findMany.mockResolvedValue([]);
+    db.deliveryPartnerProfile.count.mockResolvedValue(2);
+
+    await service.list(manager, { search: 'ravi' });
+
+    const countWhere = db.deliveryPartnerProfile.count.mock.calls[0][0].where;
+    const rowWhere = db.deliveryPartnerProfile.findMany.mock.calls[0][0].where;
+    /**
+     * The total has to describe exactly the population the page is showing; a total built
+     * from a different filter would paginate a set the user can never actually see.
+     */
+    expect(countWhere).toEqual(rowWhere);
   });
 });
 

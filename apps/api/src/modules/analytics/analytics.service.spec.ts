@@ -468,7 +468,110 @@ describe('AnalyticsService branch isolation', () => {
   });
 });
 
-describe('AnalyticsService business-time reporting boundaries', () => {
+  describe('AnalyticsService order status filter', () => {
+    function statusDb() {
+      return {
+        order: { findMany: vi.fn().mockResolvedValue([]) },
+        ...emptyDialect(),
+        deliveryAssignment: { findMany: vi.fn().mockResolvedValue([]) },
+      };
+    }
+
+    it('applies the status to the order population', async () => {
+      const db = statusDb();
+      const service = buildService(db);
+
+      await service.dashboard({ status: 'DELIVERED' });
+
+      expect(db.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'DELIVERED' }) }),
+      );
+    });
+
+    it('applies the status to the nested payment and item populations', async () => {
+      const db = statusDb();
+      const service = buildService(db);
+
+      await service.dashboard({ status: 'DELIVERED' });
+
+      expect(db.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ order: expect.objectContaining({ status: 'DELIVERED' }) }),
+        }),
+      );
+      expect(db.orderItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ order: expect.objectContaining({ status: 'DELIVERED' }) }),
+        }),
+      );
+    });
+
+    it('combines the status with a branch filter rather than replacing it', async () => {
+      const db = statusDb();
+      const service = buildService(db);
+
+      await service.dashboard({ status: 'PLACED', branchId: 'b1' });
+
+      expect(db.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ branchId: 'b1', status: 'PLACED' }),
+        }),
+      );
+    });
+
+    it('keeps revenue paid-only when a status is selected', async () => {
+      const db = statusDb();
+      const service = buildService(db);
+
+      await service.dashboard({ status: 'PLACED' });
+
+      const revenueWhere = db.orderItem.findMany.mock.calls[0]?.[0]?.where as {
+        order: { paymentStatus: string; status: string };
+      };
+      expect(revenueWhere.order.paymentStatus).toBe('PAID');
+      expect(revenueWhere.order.status).toBe('PLACED');
+    });
+
+    it('reports zero revenue for a status with no paid orders', async () => {
+      const db = statusDb();
+      const service = buildService(db);
+
+      const summary = await service.dashboard({ status: 'PLACED' });
+
+      expect(summary.revenueMinor).toBe(0);
+      expect(summary.orders).toBe(0);
+    });
+
+    it('leaves branch status counts alone because a branch is not an order', async () => {
+      const db = {
+        ...statusDb(),
+        branch: {
+          findMany: vi.fn().mockResolvedValue([
+            { id: 'b1', name: 'Guntur', status: 'ACTIVE' },
+            { id: 'b2', name: 'Vijayawada', status: 'PAUSED' },
+          ]),
+        },
+      };
+      const service = buildService(db);
+
+      const summary = await service.dashboard({ status: 'PLACED' });
+
+      expect(summary.activeBranches).toBe(1);
+      expect(summary.pausedBranches).toBe(1);
+    });
+
+    it('sends no status constraint when the filter is absent', async () => {
+      const db = statusDb();
+      const service = buildService(db);
+
+      await service.dashboard({});
+
+      const where = db.order.findMany.mock.calls[0]?.[0]?.where as Record<string, unknown>;
+      expect(where).not.toHaveProperty('status');
+    });
+  });
+
+  describe('AnalyticsService business-time reporting boundaries', () => {
   function seriesFor(orders: Array<ReturnType<typeof order>>, query: Record<string, string>) {
     const db = {
       order: { findMany: vi.fn().mockResolvedValue(orders) },
@@ -608,7 +711,7 @@ describe('AnalyticsService cancellation and refund reporting', () => {
 });
 
 describe('AnalyticsService.ordersReportCsv', () => {
-  it('emits a CSV header and correctly escaped data rows', async () => {
+  it('emits a deliberate column order and correctly escaped data rows', async () => {
     const db = {
       order: {
         findMany: vi.fn().mockResolvedValue([
@@ -634,59 +737,201 @@ describe('AnalyticsService.ordersReportCsv', () => {
     const csv = await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
 
     expect(csv.split('\n')[0]).toBe(
-      'orderNumber,placedAt,branchName,status,paymentStatus,paymentMethod,itemCount,subtotalMinor,discountMinor,deliveryFeeMinor,taxMinor,totalMinor,collectedAt,collectedByRole,collectedById',
+      'orderNumber,placedAtIst,branchName,status,paymentStatus,paymentMethod,itemCount,subtotalMinor,discountMinor,deliveryFeeMinor,taxMinor,totalMinor,collectedAtIst,collectedByRole,collectedById',
     );
     expect(csv).toContain('"Guntur, Andhra Pradesh"');
     expect(csv).toContain(',3,29900,0,4000,1000,34900,,,');
-    expect(db.order.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          placedAt: {
-            gte: new Date('2025-12-31T18:30:00.000Z'),
-            lte: new Date('2026-01-31T18:29:59.999Z'),
-          },
-        }),
-        take: 1000,
-      }),
-    );
+    // 10:00Z is 15:30 IST on 5 Jan.
+    expect(csv).toContain('2026-01-05 15:30:00 +05:30');
   });
 
-  it('exposes COD collection columns in the row data', async () => {
-    const db = {
-      order: {
-        findMany: vi.fn().mockResolvedValue([
+  it('exports in business time and orders newest-first with a deterministic tiebreak', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        orderNumber: 'HB-2',
+        placedAt: new Date('2026-01-06T11:30:00.000Z'),
+        status: 'DELIVERED',
+        paymentStatus: 'PAID',
+        subtotalMinor: 39900,
+        discountMinor: 0,
+        deliveryFeeMinor: 4000,
+        taxMinor: 1200,
+        totalMinor: 45100,
+        branch: { name: 'Guntur' },
+        items: [{ quantity: 1 }],
+        payments: [
           {
-            orderNumber: 'HB-1025',
-            placedAt: new Date('2026-01-06T10:00:00.000Z'),
-            status: 'DELIVERED',
-            paymentStatus: 'PAID',
-            subtotalMinor: 39900,
-            discountMinor: 0,
-            deliveryFeeMinor: 4000,
-            taxMinor: 1200,
-            totalMinor: 45100,
-            branch: { name: 'Guntur' },
-            items: [{ quantity: 1 }],
-            payments: [
-              {
-                method: 'COD',
-                collectedAt: new Date('2026-01-06T11:30:00.000Z'),
-                collectedByRole: 'DELIVERY_PARTNER',
-                collectedById: 'u-partner',
-              },
-            ],
+            method: 'COD',
+            collectedAt: new Date('2026-01-06T12:00:00.000Z'),
+            collectedByRole: 'DELIVERY_PARTNER',
+            collectedById: 'u-partner',
           },
-        ]),
+        ],
       },
-    };
-    const service = buildService(db);
+    ]);
+    const service = buildService({ order: { findMany } });
 
     const csv = await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
 
-    expect(csv).toContain('COD');
-    expect(csv).toContain('2026-01-06T11:30:00.000Z,DELIVERY_PARTNER,u-partner');
+    // 11:30Z and 12:00Z are 17:00 and 17:30 IST on 6 Jan.
+    expect(csv).toContain('2026-01-06 17:00:00 +05:30,Guntur');
+    expect(csv).toContain('2026-01-06 17:30:00 +05:30,DELIVERY_PARTNER,u-partner');
     expect(csv.split('\n')[1]).toBe(
-      'HB-1025,2026-01-06T10:00:00.000Z,Guntur,DELIVERED,PAID,COD,1,39900,0,4000,1200,45100,2026-01-06T11:30:00.000Z,DELIVERY_PARTNER,u-partner',
+      'HB-2,2026-01-06 17:00:00 +05:30,Guntur,DELIVERED,PAID,COD,1,39900,0,4000,1200,45100,2026-01-06 17:30:00 +05:30,DELIVERY_PARTNER,u-partner',
     );
+
+    const call = findMany.mock.calls[0][0];
+    expect(call.orderBy).toEqual([{ placedAt: 'desc' }, { id: 'desc' }]);
+    // The payment shown must be chosen deterministically, not "whatever came first".
+    expect(call.select.payments.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+  });
+
+  it('applies business-day boundaries to the requested range', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const service = buildService({ order: { findMany } });
+
+    await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(findMany.mock.calls[0][0].where.placedAt).toEqual({
+      gte: new Date('2025-12-31T18:30:00.000Z'),
+      lte: new Date('2026-01-31T18:29:59.999Z'),
+    });
+  });
+
+  it('passes the branch and status filters through to the query', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const service = buildService({ order: { findMany } });
+
+    await service.ordersReportCsv({
+      branchId: 'br-2',
+      status: 'DELIVERED',
+      from: '2026-01-01',
+      to: '2026-01-31',
+    });
+
+    expect(findMany.mock.calls[0][0].where).toEqual(
+      expect.objectContaining({ branchId: 'br-2', status: 'DELIVERED' }),
+    );
+  });
+
+  it('reads every matching row in chunks instead of stopping at a page limit', async () => {
+    const total = 2500;
+    const findMany = vi.fn().mockImplementation(({ skip, take }: { skip: number; take: number }) =>
+      Promise.resolve(
+        Array.from({ length: Math.min(take, total - skip) }, (_, i) => ({
+          orderNumber: `HB-${skip + i}`,
+          placedAt: new Date('2026-01-05T10:00:00.000Z'),
+          status: 'DELIVERED',
+          paymentStatus: 'PAID',
+          subtotalMinor: 100,
+          discountMinor: 0,
+          deliveryFeeMinor: 0,
+          taxMinor: 0,
+          totalMinor: 100,
+          branch: { name: 'Guntur' },
+          items: [{ quantity: 1 }],
+          payments: [],
+        })),
+      ),
+    );
+    const service = buildService({ order: { findMany } });
+
+    const csv = await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
+
+    // Header plus every one of the 2500 rows: nothing is dropped.
+    expect(csv.split('\n')).toHaveLength(total + 1);
+    expect(csv.split('\n')[1]).toContain('HB-0');
+    expect(csv.split('\n')[total]).toContain(`HB-${total - 1}`);
+    // Chunked reads advance by skip/take, not a fixed take: 1000.
+    expect(findMany).toHaveBeenCalledTimes(3);
+    expect(findMany.mock.calls.map((c) => c[0].skip)).toEqual([0, 1000, 2000]);
+    expect(findMany.mock.calls[0][0].take).toBe(1000);
+  });
+
+  it('neutralises spreadsheet formula injection in text columns', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        orderNumber: 'HB-3',
+        placedAt: new Date('2026-01-05T10:00:00.000Z'),
+        status: 'DELIVERED',
+        paymentStatus: 'PAID',
+        subtotalMinor: 100,
+        discountMinor: 0,
+        deliveryFeeMinor: 0,
+        taxMinor: 0,
+        totalMinor: 100,
+        // Leading `=` would be executed on open; the comma also forces RFC 4180 quoting.
+        branch: { name: '=SUM(A1:A9),danger' },
+        items: [{ quantity: 1 }],
+        payments: [],
+      },
+    ]);
+    const service = buildService({ order: { findMany } });
+
+    const csv = await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
+
+    // The leading apostrophe marks the cell as text so a spreadsheet cannot execute it,
+    // and the embedded comma keeps the cell quoted.
+    expect(csv).toContain(`"'=SUM(A1:A9),danger"`);
+    expect(csv.split('\n')[1].startsWith('HB-3,')).toBe(true);
+  });
+
+  it('keeps commas, quotes, newlines and unicode intact', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        orderNumber: 'HB-4',
+        placedAt: new Date('2026-01-05T10:00:00.000Z'),
+        status: 'DELIVERED',
+        paymentStatus: 'PAID',
+        subtotalMinor: 100,
+        discountMinor: 0,
+        deliveryFeeMinor: 0,
+        taxMinor: 0,
+        totalMinor: 100,
+        branch: { name: 'Hyderabad, Telangana — "central" વિભાગ' },
+        items: [{ quantity: 1 }],
+        payments: [],
+      },
+    ]);
+    const service = buildService({ order: { findMany } });
+
+    const csv = await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(csv).toContain('"Hyderabad, Telangana — ""central"" વિભાગ"');
+  });
+
+  it('produces a header-only document for an empty result', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const service = buildService({ order: { findMany } });
+
+    const csv = await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(csv).toBe(
+      'orderNumber,placedAtIst,branchName,status,paymentStatus,paymentMethod,itemCount,subtotalMinor,discountMinor,deliveryFeeMinor,taxMinor,totalMinor,collectedAtIst,collectedByRole,collectedById',
+    );
+  });
+
+  it('emits money in lossless paise without floating-point drift', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        orderNumber: 'HB-5',
+        placedAt: new Date('2026-01-05T10:00:00.000Z'),
+        status: 'DELIVERED',
+        paymentStatus: 'PAID',
+        subtotalMinor: 123456789,
+        discountMinor: 1,
+        deliveryFeeMinor: 0,
+        taxMinor: 0,
+        totalMinor: 123456788,
+        branch: { name: 'Guntur' },
+        items: [{ quantity: 1 }],
+        payments: [],
+      },
+    ]);
+    const service = buildService({ order: { findMany } });
+
+    const csv = await service.ordersReportCsv({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(csv).toContain(',123456789,1,0,0,123456788,');
   });
 });

@@ -5,6 +5,7 @@ import type {
   DeliveryPartnerProfileDto,
 } from '@hungrybox/shared';
 import { haversineKm } from '../locations/geo';
+import { toKycSummary } from '../../common/utils/kyc-summary';
 
 export interface PartnerBranchSource {
   id: string;
@@ -154,6 +155,7 @@ export function toPartnerListItemDto(
     joinedAt: Date | null;
     latitude: { toString(): string } | number | null;
     longitude: { toString(): string } | number | null;
+    documents?: ReadonlyArray<{ type: string; status: string }>;
   },
   activeDeliveryCount: number,
   branchLatitude: { toString(): string } | number | null,
@@ -175,6 +177,7 @@ export function toPartnerListItemDto(
       profile.longitude,
     ),
     joinedAt: profile.joinedAt?.toISOString() ?? null,
+    kyc: toKycSummary(profile.documents ?? []),
   };
 }
 

@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearSession, loadSession, saveSession } from './session-storage';
+import {
+  clearSession,
+  consumeSessionExpiredFlag,
+  loadSession,
+  markSessionExpired,
+  saveSession,
+} from './session-storage';
 import type { AuthUser } from '@hungrybox/shared';
 
 function createLocalStorageMock(): Storage {
@@ -35,6 +41,7 @@ const demoUser: AuthUser = {
 
 beforeEach(() => {
   vi.stubGlobal('localStorage', createLocalStorageMock());
+  vi.stubGlobal('sessionStorage', createLocalStorageMock());
 });
 
 afterEach(() => {
@@ -66,5 +73,49 @@ describe('session-storage', () => {
     saveSession({ token: 'token-1', user: demoUser });
     clearSession();
     expect(loadSession()).toBeNull();
+  });
+});
+
+describe('session-expired flag', () => {
+  it('reports no expiry for a fresh visit', () => {
+    expect(consumeSessionExpiredFlag()).toBe(false);
+  });
+
+  it('reports the expiry exactly once', () => {
+    markSessionExpired();
+    /**
+     * Consumed on read so a stale notice cannot reappear on an unrelated later visit, and
+     * so the login screen does not need to remember that it already said something.
+     */
+    expect(consumeSessionExpiredFlag()).toBe(true);
+    expect(consumeSessionExpiredFlag()).toBe(false);
+  });
+
+  it('keeps the flag out of the stored session', () => {
+    saveSession({ token: 'token-1', user: demoUser });
+    markSessionExpired();
+    /**
+     * The flag is a boolean and must never be conflated with credentials. It also has to
+     * survive clearing the session, which is exactly what happens on a 401.
+     */
+    clearSession();
+    expect(loadSession()).toBeNull();
+    expect(consumeSessionExpiredFlag()).toBe(true);
+  });
+
+  it('survives storage being unavailable', () => {
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+      removeItem: () => {
+        throw new Error('blocked');
+      },
+    });
+    expect(() => markSessionExpired()).not.toThrow();
+    expect(consumeSessionExpiredFlag()).toBe(false);
   });
 });

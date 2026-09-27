@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import type { DeliveryAssignmentDto, DeliveryAssignmentListItemDto } from '@hungrybox/shared';
 import { StatusBadge } from '../../components/StatusBadge';
+import { formatBusinessDateTime } from '../../lib/business-time';
 import { formatDateTime } from '../../lib/format';
 import { formatPaise } from '../../lib/money';
 import {
@@ -74,11 +75,22 @@ export function AssignmentCard({ assignment }: { assignment: DeliveryAssignmentD
   );
 }
 
+/**
+ * Assignment row shared by the Delivery Partner and management screens.
+ *
+ * `useBusinessTime` exists because the two audiences legitimately want different clocks.
+ * A partner reading "assigned 14:20" means 14:20 where they are, which is what
+ * `formatDateTime` gives them and must not change. Management reconciliation compares
+ * these stamps against server-side business-time reporting, so it opts in to IST.
+ */
 export function AssignmentListItemCard({
   assignment,
+  useBusinessTime = false,
 }: {
   assignment: DeliveryAssignmentListItemDto;
+  useBusinessTime?: boolean;
 }): JSX.Element {
+  const formatStamp = useBusinessTime ? formatBusinessDateTime : formatDateTime;
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
@@ -86,7 +98,7 @@ export function AssignmentListItemCard({
           <p className="font-extrabold tracking-tight text-brand-navy">{assignment.orderNumber}</p>
           <p className="mt-0.5 text-xs text-slate-500">
             {assignment.recipientName ?? assignment.addressCity ?? assignment.branchCity} ·{' '}
-            {formatDateTime(assignment.assignedAt)}
+            {formatStamp(assignment.assignedAt)}
           </p>
         </div>
         <StatusBadge

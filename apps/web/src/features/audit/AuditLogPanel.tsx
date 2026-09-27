@@ -45,8 +45,19 @@ export function AuditLogPanel({ token, emptyMessage, branches }: AuditLogPanelPr
       kind: kind || undefined,
       branchId: showBranchFilter ? branchId || undefined : undefined,
       entityType: entityType.trim() || undefined,
-      from: from ? new Date(from).toISOString() : undefined,
-      to: to ? new Date(to).toISOString() : undefined,
+      /**
+       * The date inputs are business dates, so they are sent as bare `YYYY-MM-DD` and the
+       * API expands them to whole business days in IST.
+       *
+       * These used to be converted with `new Date(from).toISOString()` first, which reads
+       * the date in the browser's own zone: in IST that turned "2026-09-01" into
+       * 2026-08-31T18:30Z, and the API - correctly treating a full ISO instant as exact -
+       * then started the range 5.5 hours before the day the manager selected. The last
+       * row of the selected day was also lost, because the end became the following day's
+       * midnight.
+       */
+      from: from || undefined,
+      to: to || undefined,
       page,
       limit: PAGE_SIZE,
     }),

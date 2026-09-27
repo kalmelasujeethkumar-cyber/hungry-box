@@ -103,6 +103,8 @@ function baseDb() {
         }),
       update: vi.fn().mockResolvedValue({}),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      count: vi.fn().mockResolvedValue(0),
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     orderEvent: {
       create: vi.fn().mockResolvedValue({}),
@@ -170,6 +172,131 @@ describe('BranchOrdersService.list', () => {
     expect(call.where.status).toBe('PLACED');
     expect(call.where.placedAt.gte).toBeInstanceOf(Date);
     expect(call.where.placedAt.lte).toBeInstanceOf(Date);
+  });
+
+  it('is bounded and paged, defaulting to the first 25 newest orders', async () => {
+    const { service, db } = buildService({});
+
+    const result = await service.list(superAdmin, {});
+
+    expect(db.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 25 }),
+    );
+    expect(result.page).toBe(1);
+    expect(result.limit).toBe(25);
+    expect(result.total).toBe(0);
+    expect(Array.isArray(result.items)).toBe(true);
+  });
+
+  it('orders by placedAt then id so a page boundary cannot repeat an order', async () => {
+    const { service, db } = buildService({});
+
+    await service.list(superAdmin, {});
+
+    expect(db.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ placedAt: 'desc' }, { id: 'desc' }] }),
+    );
+  });
+
+  it('translates page and limit into skip and take and echoes them back', async () => {
+    const { service, db } = buildService({});
+    db.order.count.mockResolvedValue(140);
+
+    const result = await service.list(superAdmin, { page: 3, limit: 50 });
+
+    expect(db.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 100, take: 50 }),
+    );
+    expect(result.page).toBe(3);
+    expect(result.limit).toBe(50);
+    expect(result.total).toBe(140);
+  });
+
+  it('counts the same filtered population it pages over', async () => {
+    const { service, db } = buildService({});
+    db.order.count.mockResolvedValue(7);
+
+    await service.list(gunturManager, { status: 'PREPARING' });
+
+    const countWhere = db.order.count.mock.calls[0][0].where;
+    const listWhere = db.order.findMany.mock.calls[0][0].where;
+    expect(countWhere).toEqual(listWhere);
+    expect(countWhere).toEqual(
+      expect.objectContaining({ branchId: 'b1', status: 'PREPARING' }),
+    );
+  });
+
+  it('caps a caller-supplied limit so one request cannot ask for every order', async () => {
+    const { service, db } = buildService({});
+
+    await service.list(superAdmin, { limit: 100_000 });
+
+    expect(db.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 100 }),
+    );
+  });
+});
+
+describe('BranchOrdersService.counts', () => {
+  it('derives dashboard counts with one grouped query instead of loading orders', async () => {
+    const { service, db } = buildService({});
+    db.order.groupBy.mockResolvedValue([
+      { status: 'PLACED', _count: { _all: 4 } },
+      { status: 'CONFIRMED', _count: { _all: 2 } },
+      { status: 'PREPARING', _count: { _all: 3 } },
+      { status: 'READY_FOR_PICKUP', _count: { _all: 1 } },
+      { status: 'OUT_FOR_DELIVERY', _count: { _all: 5 } },
+    ]);
+
+    const counts = await service.counts(gunturManager, {});
+
+    expect(counts).toEqual({
+      newOrders: 4,
+      preparing: 5,
+      ready: 1,
+      outForDelivery: 5,
+      total: 15,
+    });
+    expect(db.order.findMany).not.toHaveBeenCalled();
+  });
+
+  it('ignores a status filter so the dashboard always shows the whole funnel', async () => {
+    const { service, db } = buildService({});
+    db.order.groupBy.mockResolvedValue([{ status: 'PLACED', _count: { _all: 1 } }]);
+
+    await service.counts(gunturManager, { status: 'DELIVERED' });
+
+    const where = db.order.groupBy.mock.calls[0][0].where;
+    expect(where.status).toBeUndefined();
+    expect(where.branchId).toBe('b1');
+  });
+
+  it('reports zeroes for a branch with no orders', async () => {
+    const { service, db } = buildService({});
+    db.order.groupBy.mockResolvedValue([]);
+
+    await expect(service.counts(gunturManager, {})).resolves.toEqual({
+      newOrders: 0,
+      preparing: 0,
+      ready: 0,
+      outForDelivery: 0,
+      total: 0,
+    });
+  });
+
+  it('pins the counts to a manager branch even when another branchId is passed', async () => {
+    const { service, db } = buildService({});
+    db.order.groupBy.mockResolvedValue([]);
+
+    /**
+     * counts() issues its own query, so the list's branch pinning does not cover it. If this
+     * were left open it would report another branch's funnel on the manager's home screen
+     * while the table underneath showed their own orders.
+     */
+    await service.counts(gunturManager, { branchId: 'b9' });
+
+    const where = db.order.groupBy.mock.calls[0][0].where;
+    expect(where.branchId).toBe('b1');
   });
 });
 

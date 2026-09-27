@@ -8,13 +8,17 @@ import type {
 } from '@hungrybox/shared';
 import { ApiError, branchDeliveryApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
+import { useDebouncedValue } from '../../lib/use-debounced-value';
+import { useLatestRequest } from '../../lib/use-latest-request';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
 import { Button } from '../../components/Button';
 import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
+import Pagination from '../../components/Pagination';
 import { StatusBadge } from '../../components/StatusBadge';
 import { PlusIcon, UserIcon } from '../../features/storefront/components/icons';
+import { PARTNER_PAGE_SIZE } from '../../features/manager/manager-partners';
 import {
   AVAILABILITY_LABELS,
   AVAILABILITY_TONES,
@@ -62,10 +66,15 @@ const STATUS_OPTIONS = [
   { value: 'REJECTED', label: 'Rejected' },
 ] as const;
 
+/** Settle time before a typed search becomes a query. */
+const SEARCH_DEBOUNCE_MS = 300;
+
 export default function ManagerPartnersPage(): JSX.Element {
   const { token } = useAuth();
   const [partners, setPartners] = useState<DeliveryPartnerListItemDto[]>([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
+  const [offset, setOffset] = useState(0);
   const [statusFilter, setStatusFilter] = useState<DeliveryPartnerStatus | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,21 +90,54 @@ export default function ManagerPartnersPage(): JSX.Element {
     vehicleNumber: '',
   });
 
+  /**
+   * Typing is debounced so a burst of keystrokes becomes one query, and responses are
+   * order-guarded so a slow earlier request cannot replace the newer filtered results.
+   */
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
+  const latestRequest = useLatestRequest();
+
   const refresh = useCallback(() => {
     if (!token) return;
     setLoading(true);
+    setError(null);
+    const request = latestRequest.begin();
     branchDeliveryApi
-      .listPartners(token, { status: statusFilter, search: search.trim() || undefined })
-      .then(setPartners)
+      .listPartners(token, {
+        status: statusFilter,
+        search: debouncedSearch.trim() || undefined,
+        limit: PARTNER_PAGE_SIZE,
+        offset,
+      })
+      .then((result) => {
+        // A slower earlier request must not overwrite the rows the manager is now reading.
+        if (!latestRequest.isCurrent(request)) return;
+        setPartners(result.items);
+        setTotal(result.total);
+      })
       .catch((err: unknown) => {
+        if (!latestRequest.isCurrent(request)) return;
         setError(err instanceof Error ? err.message : 'Could not load partners.');
       })
-      .finally(() => setLoading(false));
-  }, [token, statusFilter, search]);
+      .finally(() => {
+        if (latestRequest.isCurrent(request)) setLoading(false);
+      });
+  }, [token, statusFilter, debouncedSearch, offset, latestRequest]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  /** A new filter restarts at page one so the manager is not stranded past the end. */
+  const applyStatus = (next: DeliveryPartnerStatus | undefined): void => {
+    setStatusFilter(next);
+    setOffset(0);
+  };
+
+  const applySearch = (next: string): void => {
+    setSearch(next);
+    setOffset(0);
+  };
 
   const submitCreate = (): void => {
     if (!token) return;
@@ -141,7 +183,7 @@ export default function ManagerPartnersPage(): JSX.Element {
         <div className="flex flex-1 flex-col gap-3 sm:flex-row">
           <input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => applySearch(event.target.value)}
             placeholder="Search by name or partner ID"
             aria-label="Search partners"
             className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-brand-teal focus:outline-none sm:w-72"
@@ -149,8 +191,8 @@ export default function ManagerPartnersPage(): JSX.Element {
           <select
             value={statusFilter ?? ''}
             onChange={(event) =>
-              setStatusFilter((event.target.value as DeliveryPartnerStatus) || undefined)
-            }
+            applyStatus((event.target.value as DeliveryPartnerStatus) || undefined)
+          }
             aria-label="Filter by status"
             className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-brand-teal focus:outline-none"
           >
@@ -203,6 +245,17 @@ export default function ManagerPartnersPage(): JSX.Element {
           )}
         </div>
       )}
+
+      {!loading ? (
+        <Pagination
+          page={Math.floor(offset / PARTNER_PAGE_SIZE) + 1}
+          limit={PARTNER_PAGE_SIZE}
+          total={total}
+          shown={partners.length}
+          onPageChange={(next) => setOffset((next - 1) * PARTNER_PAGE_SIZE)}
+          filtered={statusFilter !== undefined || search.trim() !== ''}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={createOpen}

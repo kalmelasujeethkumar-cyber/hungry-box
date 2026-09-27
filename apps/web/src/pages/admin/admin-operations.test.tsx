@@ -5,9 +5,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type {
   AuditListResultDto,
   BranchDto,
+  BranchOrderListResult,
   DashboardSummaryDto,
   DeliveryPartnerListItemDto,
-  KycListItemDto,
+  DeliveryPartnerListResult,
   OrderSummaryDto,
   UserListResultDto,
 } from '@hungrybox/shared';
@@ -179,8 +180,19 @@ function partner(overrides: Partial<DeliveryPartnerListItemDto> = {}): DeliveryP
     activeDeliveryCount: 1,
     distanceKm: null,
     joinedAt: '2026-06-01T00:00:00.000Z',
+    kyc: { overallState: 'VERIFIED', hasAadhaar: true, hasDrivingLicense: true },
     ...overrides,
   };
+}
+
+/** Mirrors the paged order list envelope the API returns. */
+function orderPage(items: OrderSummaryDto[]): BranchOrderListResult {
+  return { items, total: items.length, page: 1, limit: 25 };
+}
+
+/** Mirrors the paged partner list envelope the API returns. */
+function partnerPage(items: DeliveryPartnerListItemDto[]): DeliveryPartnerListResult {
+  return { items, total: items.length, limit: 50, offset: 0 };
 }
 
 function managerResult(overrides: Partial<UserListResultDto> = {}): UserListResultDto {
@@ -254,8 +266,8 @@ beforeEach(() => {
   });
   MOCK_APIS.adminApi.dashboard.mockResolvedValue(dashboard());
   MOCK_APIS.adminApi.ordersReportCsv.mockResolvedValue('orderNumber,totalMinor\nHB-1,43000');
-  MOCK_APIS.branchOrdersApi.listGlobal.mockResolvedValue([orderSummary()]);
-  MOCK_APIS.branchDeliveryApi.listPartners.mockResolvedValue([partner()]);
+  MOCK_APIS.branchOrdersApi.listGlobal.mockResolvedValue(orderPage([orderSummary()]));
+  MOCK_APIS.branchDeliveryApi.listPartners.mockResolvedValue(partnerPage([partner()]));
   MOCK_APIS.branchKycApi.list.mockResolvedValue([]);
   MOCK_APIS.branchAuditApi.list.mockResolvedValue(AUDIT_RESULT);
   MOCK_APIS.branchAuditApi.exportCsv.mockResolvedValue('id,createdAt\nevt-1,2026-09-24');
@@ -493,18 +505,17 @@ describe('admin partners', () => {
   });
 
   it('shows global KYC status and secure view links per partner', async () => {
-    const kycItems: KycListItemDto[] = [
-      {
-        partnerId: 'DP-0001',
-        fullName: 'Shiva Kumar',
-        mobile: '9090909090',
-        status: 'ACTIVE',
-        overallState: 'AWAITING_REVIEW',
-        hasAadhaar: true,
-        hasDrivingLicense: false,
-      },
-    ];
-    MOCK_APIS.branchKycApi.list.mockResolvedValue(kycItems);
+    /**
+     * The document summary now travels on the partner row itself, so this asserts the
+     * list endpoint's contract rather than a separate whole-fleet KYC fetch.
+     */
+    MOCK_APIS.branchDeliveryApi.listPartners.mockResolvedValue(
+      partnerPage([
+        partner({
+          kyc: { overallState: 'AWAITING_REVIEW', hasAadhaar: true, hasDrivingLicense: false },
+        }),
+      ]),
+    );
     MOCK_APIS.branchKycApi.documentAccess.mockResolvedValue({
       url: 'signed-url',
       expiresAt: '2026-09-24T10:10:00.000Z',
@@ -592,5 +603,54 @@ describe('admin reports', () => {
     );
     vi.unstubAllGlobals();
     vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+  });
+
+  it('applies the status filter to the on-screen figures and the CSV alike', async () => {
+    const createObjectURL = vi.fn().mockReturnValue('blob:report');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <AdminReportsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findAllByText('₹23,000');
+    await user.selectOptions(screen.getByLabelText('Status'), 'PLACED');
+
+    await waitFor(() =>
+      expect(MOCK_APIS.adminApi.dashboard).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'PLACED' }),
+        'test-token',
+      ),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Download orders CSV' }));
+
+    /**
+     * The two must describe the same dataset. The Status control previously reached only
+     * the export, so the screen reported one population while the downloaded file held
+     * another - a silent contradiction between the two views of the same report.
+     */
+    await waitFor(() =>
+      expect(MOCK_APIS.adminApi.ordersReportCsv).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'PLACED' }),
+        'test-token',
+      ),
+    );
+    vi.unstubAllGlobals();
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+  });
+
+  it('explains a failed branch filter instead of silently showing every branch', async () => {
+    MOCK_APIS.branchesApi.list.mockRejectedValueOnce(new Error('branch service unavailable'));
+    render(
+      <MemoryRouter>
+        <AdminReportsPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/branch service unavailable/i)).toBeInTheDocument();
   });
 });

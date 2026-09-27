@@ -1,9 +1,10 @@
 import type { FormEvent, JSX } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import { isManagementRole, resolvePostLoginPath } from '../../auth/role-paths';
+import { consumeSessionExpiredFlag } from '../../auth/session-storage';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { TextField } from '../../components/forms/TextField';
@@ -12,6 +13,9 @@ import { HOME_PATH } from '../../routes/paths';
 const UNAUTHORIZED_ROLE_MESSAGE =
   'This account is not authorized for Hungry Box management. Sign in with a management account.';
 
+const SESSION_EXPIRED_MESSAGE =
+  'Your session has expired. Please sign in again to continue.';
+
 export default function ManagementLoginPage(): JSX.Element {
   const { login, logout } = useAuth();
   const navigate = useNavigate();
@@ -19,13 +23,25 @@ export default function ManagementLoginPage(): JSX.Element {
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const from = (location.state as { from?: string } | null)?.from;
 
+  /**
+   * Read once on mount. An expired session and a deliberate sign-out both land here, so
+   * without this the user is silently returned to a login form with no idea why. Reading
+   * it in an initializer avoids rendering the notice for a frame first, and the flag is
+   * consumed so it cannot reappear on a later visit.
+   */
+  useEffect(() => {
+    setExpired(consumeSessionExpiredFlag());
+  }, []);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
+    setExpired(false);
     setSubmitting(true);
     let user;
     try {
@@ -86,6 +102,7 @@ export default function ManagementLoginPage(): JSX.Element {
             onChange={(event) => setPassword(event.target.value)}
           />
 
+          {expired && !error ? <Notice tone="warning">{SESSION_EXPIRED_MESSAGE}</Notice> : null}
           {error ? <Notice tone="error">{error}</Notice> : null}
 
           <Button

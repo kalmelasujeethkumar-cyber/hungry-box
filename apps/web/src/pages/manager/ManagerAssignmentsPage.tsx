@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type {
   DeliveryAssignmentListItemDto,
   DeliveryAssignmentStatus,
@@ -10,6 +11,7 @@ import { branchDeliveryApi, branchOrdersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import { AssignmentListItemCard } from '../../features/delivery/AssignmentCard';
 import { AVAILABILITY_LABELS } from '../../features/delivery/delivery-status';
+import { BRANCH_ORDERS_MAX_PAGE_SIZE } from '../../features/manager/manager-orders';
 import { Button } from '../../components/Button';
 import { FilterChips } from '../../components/FilterChips';
 import { LoadingState } from '../../components/LoadingState';
@@ -19,12 +21,14 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { formatPaise } from '../../lib/money';
+import { BRANCH_ORDERS_PATH } from '../../routes/paths';
 import ManagerLayout from './ManagerLayout';
 
 const FILTERS = [
   { value: undefined, label: 'In progress' },
   { value: 'ASSIGNED', label: 'Assigned' },
   { value: 'ACCEPTED', label: 'Accepted' },
+  { value: 'PICKED_UP', label: 'Picked up' },
   { value: 'DELIVERED', label: 'Delivered' },
   { value: 'CANCELLED', label: 'Cancelled' },
 ] as const;
@@ -38,6 +42,7 @@ export default function ManagerAssignmentsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [assignOpen, setAssignOpen] = useState(false);
   const [orders, setOrders] = useState<OrderSummaryDto[]>([]);
+  const [readyTotal, setReadyTotal] = useState(0);
   const [candidates, setCandidates] = useState<DeliveryPartnerCandidateDto[]>([]);
   const [selectedOrder, setSelectedOrder] = useState('');
   const [selectedPartner, setSelectedPartner] = useState('');
@@ -71,14 +76,25 @@ export default function ManagerAssignmentsPage(): JSX.Element {
     setCandidates([]);
     setSelectedOrder('');
     setSelectedPartner('');
+    setReadyTotal(0);
     Promise.all([
-      branchOrdersApi.list(token, 'READY_FOR_PICKUP'),
+      /**
+       * Ready orders are paged by the server. This asks for the largest page it will
+       * serve and, if the branch has more ready orders than that, `readyTotal` lets the
+       * dialog say so and point at the paged orders list rather than quietly offering
+       * only the newest slice to assign from.
+       */
+      branchOrdersApi.list(token, {
+        status: 'READY_FOR_PICKUP',
+        limit: BRANCH_ORDERS_MAX_PAGE_SIZE,
+      }),
       branchDeliveryApi.candidates(token),
     ])
       .then(([readyOrders, partnerCandidates]) => {
-        setOrders(readyOrders);
+        setOrders(readyOrders.items);
+        setReadyTotal(readyOrders.total);
         setCandidates(partnerCandidates);
-        setSelectedOrder(readyOrders[0]?.id ?? '');
+        setSelectedOrder(readyOrders.items[0]?.id ?? '');
         setSelectedPartner('');
       })
       .catch((err: unknown) =>
@@ -146,7 +162,7 @@ export default function ManagerAssignmentsPage(): JSX.Element {
             />
           ) : (
             assignments.map((assignment) => (
-              <AssignmentListItemCard key={assignment.id} assignment={assignment} />
+              <AssignmentListItemCard key={assignment.id} assignment={assignment} useBusinessTime />
             ))
           )}
         </div>
@@ -169,6 +185,18 @@ export default function ManagerAssignmentsPage(): JSX.Element {
           </Notice>
         ) : null}
         <div className="mt-4 space-y-4">
+          {readyTotal > orders.length ? (
+            <Notice tone="warning">
+              Showing the {orders.length} most recent of {readyTotal} ready orders.{' '}
+              <Link
+                to={`${BRANCH_ORDERS_PATH}?status=READY_FOR_PICKUP`}
+                className="font-semibold underline"
+              >
+                Review the rest in Orders
+              </Link>
+              .
+            </Notice>
+          ) : null}
           <div>
             <label className="text-xs font-bold uppercase text-slate-500" htmlFor="assign-order">
               Order

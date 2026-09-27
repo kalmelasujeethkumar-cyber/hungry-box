@@ -241,6 +241,16 @@ export class DeliveryAssignmentService {
     }
     if (query.status) {
       where.status = query.status;
+    } else {
+      /**
+       * No status requested means the live delivery board, which is what the management
+       * screen's "In progress" tab means. Without this the filter was absent entirely, so
+       * the board silently showed the branch's whole delivery history - completed and
+       * cancelled runs included - which reads as a backlog of live orders that is not there.
+       * Reuses ACTIVE_ASSIGNMENT_STATUSES so the list, the assign guard and the partner
+       * release rule cannot drift apart on what "still running" means.
+       */
+      where.status = { in: ACTIVE_ASSIGNMENT_STATUSES };
     }
     const rows = await db.deliveryAssignment.findMany({
       where,

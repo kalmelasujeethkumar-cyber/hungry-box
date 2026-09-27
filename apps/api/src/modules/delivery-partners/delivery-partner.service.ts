@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
 import type {
   CreateDeliveryPartnerResultDto,
   DeliveryPartnerCandidateDto,
-  DeliveryPartnerListItemDto,
+  DeliveryPartnerListResult,
   DeliveryPartnerProfileDto,
   UserRole,
 } from '@hungrybox/shared';
@@ -25,6 +25,7 @@ import { DeliveryConflictException } from '../../common/exceptions/delivery-conf
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditKinds, AuditService } from '../audit/audit.service';
 import type { CreateDeliveryPartnerDto } from './dto/create-delivery-partner.dto';
+import { PARTNER_LIST_DEFAULT_LIMIT } from './dto/partner-list-query.dto';
 import type { PartnerListQueryDto } from './dto/partner-list-query.dto';
 import type { ReviewPartnerDocumentDto } from './dto/review-partner-document.dto';
 import type { SetDeliveryPartnerStatusDto } from './dto/set-delivery-partner-status.dto';
@@ -154,7 +155,7 @@ export class DeliveryPartnerService {
   async list(
     actor: PartnerActor,
     query: PartnerListQueryDto,
-  ): Promise<DeliveryPartnerListItemDto[]> {
+  ): Promise<DeliveryPartnerListResult> {
     const db = this.prisma.requireClient();
     const enforcedBranchId = this.enforcedBranchId(actor);
     const where: Prisma.DeliveryPartnerProfileWhereInput = {};
@@ -163,19 +164,12 @@ export class DeliveryPartnerService {
       where.branchId = enforcedBranchId;
     } else if (query.branchId) {
       where.branchId = query.branchId;
-    } else if (query.search) {
+    }
+    if (query.search) {
       where.OR = [
         { fullName: { contains: query.search, mode: 'insensitive' } },
         { partnerId: { contains: query.search } },
       ];
-    }
-    if (query.search) {
-      const or = where.OR ?? [];
-      or.push(
-        { fullName: { contains: query.search, mode: 'insensitive' } },
-        { partnerId: { contains: query.search } },
-      );
-      where.OR = or;
     }
     if (query.status) {
       where.status = query.status;
@@ -184,27 +178,45 @@ export class DeliveryPartnerService {
       where.availability = query.availability;
     }
 
-    const rows = await db.deliveryPartnerProfile.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: query.offset ?? 0,
-      take: query.limit ?? 50,
-      select: {
-        id: true,
-        partnerId: true,
-        fullName: true,
-        mobile: true,
-        status: true,
-        availability: true,
-        joinedAt: true,
-        latitude: true,
-        longitude: true,
-        branch: { select: { id: true, name: true, code: true, city: true } },
-      },
-    });
+    const limit = query.limit ?? PARTNER_LIST_DEFAULT_LIMIT;
+    const offset = query.offset ?? 0;
+
+    /**
+     * `createdAt` alone is not a total order, so `skip`/`take` could repeat or hide a
+     * partner when two accounts share a timestamp. `id` breaks the tie.
+     */
+    const [rows, total] = await Promise.all([
+      db.deliveryPartnerProfile.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: offset,
+        take: limit,
+        select: {
+          id: true,
+          partnerId: true,
+          fullName: true,
+          mobile: true,
+          status: true,
+          availability: true,
+          joinedAt: true,
+          latitude: true,
+          longitude: true,
+          branch: { select: { id: true, name: true, code: true, city: true } },
+          // Type and status only: enough to summarise document state for this row without
+          // pulling storage paths or verification notes into a list response.
+          documents: { select: { type: true, status: true } },
+        },
+      }),
+      db.deliveryPartnerProfile.count({ where }),
+    ]);
     const counts = await this.activeDeliveryCounts(rows.map((row) => row.id));
 
-    return rows.map((row) => toPartnerListItemDto(row, counts.get(row.id) ?? 0, null, null));
+    return {
+      items: rows.map((row) => toPartnerListItemDto(row, counts.get(row.id) ?? 0, null, null)),
+      total,
+      limit,
+      offset,
+    };
   }
 
   async get(actor: PartnerActor, partnerId: string): Promise<DeliveryPartnerProfileDto> {

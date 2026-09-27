@@ -18,6 +18,15 @@ export class BranchOrdersController {
     return this.branchOrders.list(this.actor(user), query);
   }
 
+  /**
+   * Declared before `:id` so the literal path wins over the parameter route. Backs the
+   * branch manager dashboard with server-computed counts.
+   */
+  @Get('counts')
+  counts(@CurrentUser() user: RequestUser, @Query() query: BranchOrderListQueryDto) {
+    return this.branchOrders.counts(this.actor(user), query);
+  }
+
   @Get(':id')
   get(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     return this.branchOrders.get(this.actor(user), id);

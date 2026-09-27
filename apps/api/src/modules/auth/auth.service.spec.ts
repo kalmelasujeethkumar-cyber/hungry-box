@@ -148,4 +148,34 @@ describe('AuthService.me', () => {
     const service = buildService(db);
     await expect(service.me('missing')).rejects.toThrow(UnauthorizedException);
   });
+
+  it('rejects a session whose account was suspended after login', async () => {
+    const db = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          ...gunturActiveManager,
+          status: 'SUSPENDED',
+        }),
+      },
+    };
+    const service = buildService(db);
+    /**
+     * The token is still cryptographically valid, so only a status re-check on the server
+     * can end the session. Without it a suspended manager keeps access until expiry.
+     */
+    await expect(service.me('user-manager')).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('rejects a deactivated session', async () => {
+    const db = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          ...gunturActiveManager,
+          status: 'INACTIVE',
+        }),
+      },
+    };
+    const service = buildService(db);
+    await expect(service.me('user-manager')).rejects.toThrow(UnauthorizedException);
+  });
 });

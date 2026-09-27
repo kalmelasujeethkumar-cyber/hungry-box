@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -101,19 +101,32 @@ export default function AdminReportsPage(): JSX.Element {
   const [branches, setBranches] = useState<BranchDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [branchError, setBranchError] = useState<string | null>(null);
   const [csvBusy, setCsvBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  /**
+   * One filter object feeds both the dashboard and the CSV download.
+   *
+   * The Status control used to be applied only to the export, so the figures on screen
+   * ignored it while the downloaded file honoured it - the two described different
+   * datasets. Building both requests from the same object makes that drift impossible.
+   */
+  const filters = useMemo(
+    () => ({
+      branchId: branchId || undefined,
+      from,
+      to,
+      status: status || undefined,
+    }),
+    [branchId, from, to, status],
+  );
 
   const refresh = useCallback(() => {
     if (!token) return;
     setLoading(true);
     setError(null);
-    const query: AdminDashboardQuery = {
-      branchId: branchId || undefined,
-      from,
-      to,
-      bucket,
-    };
+    const query: AdminDashboardQuery = { ...filters, bucket };
     adminApi
       .dashboard(query, token)
       .then(setDashboard)
@@ -121,7 +134,7 @@ export default function AdminReportsPage(): JSX.Element {
         setError(err instanceof Error ? err.message : 'Could not load the reports.'),
       )
       .finally(() => setLoading(false));
-  }, [token, branchId, from, to, bucket]);
+  }, [token, filters, bucket]);
 
   useEffect(() => {
     refresh();
@@ -132,7 +145,15 @@ export default function AdminReportsPage(): JSX.Element {
     branchesApi
       .list(token)
       .then(setBranches)
-      .catch(() => undefined);
+      .catch((err: unknown) => {
+        /**
+         * Reported rather than swallowed. On this page the branch list is also the set of
+         * valid range sources, so a silent failure looks like "no reports exist anywhere".
+         */
+        setBranchError(
+          err instanceof Error ? err.message : 'Could not load the branch filter.',
+        );
+      });
   }, [token]);
 
   useEffect(() => {
@@ -143,12 +164,7 @@ export default function AdminReportsPage(): JSX.Element {
     if (!token) return;
     setCsvBusy(true);
     setExportError(null);
-    const query: AdminReportQuery = {
-      branchId: branchId || undefined,
-      from,
-      to,
-      status: status || undefined,
-    };
+    const query: AdminReportQuery = { ...filters };
     adminApi
       .ordersReportCsv(query, token)
       .then((csv) => {
@@ -250,6 +266,7 @@ export default function AdminReportsPage(): JSX.Element {
       </div>
 
       {exportError ? <Notice tone="error">{exportError}</Notice> : null}
+      {branchError ? <Notice tone="warning">{branchError}</Notice> : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
 
       {loading ? (
@@ -259,7 +276,11 @@ export default function AdminReportsPage(): JSX.Element {
           <EmptyState
             icon={<PackageIcon className="h-8 w-8" />}
             title="No report data"
-            message="Adjust the filters to see revenue, orders and branch performance."
+            message={
+              filters.status
+                ? `No orders are in ${ORDER_STATUS_LABELS[filters.status]} for this branch and date range.`
+                : 'Adjust the filters to see revenue, orders and branch performance.'
+            }
           />
         </div>
       ) : (

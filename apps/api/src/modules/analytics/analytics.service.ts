@@ -15,22 +15,22 @@ import type {
   BranchStatus,
 } from '@hungrybox/shared';
 import { Prisma } from '../../generated/prisma/client';
+import {
+  businessParts,
+  fromBusinessWallMs,
+  startOfBusinessDay,
+  toBusinessWallMs,
+} from '../../common/utils/business-time';
+import { buildCsvDocument, type CsvValue } from '../../common/utils/csv';
+import { formatBusinessTimestamp } from '../../common/utils/business-time';
+import { collectAllForExport } from '../../common/utils/paginated-export';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AdminDashboardQueryDto } from './dto/admin-dashboard-query.dto';
 import type { AdminReportQueryDto } from './dto/admin-report-query.dto';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const MINUTE_MS = 60 * 1000;
 const MAX_SERIES_POINTS = 366;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/**
- * Hungry Box business reporting timezone. Every branch operates in India, and
- * Asia/Kolkata has observed a constant UTC+05:30 with no daylight saving since 1945,
- * so a fixed offset is exact here and keeps reporting boundaries independent of the
- * host timezone. Stored timestamps stay UTC; only the reporting boundaries move.
- */
-const BUSINESS_OFFSET_MINUTES = 330;
 
 interface OrderRow {
   id: string;
@@ -94,14 +94,24 @@ export class AnalyticsService {
     const db = this.prisma.requireClient();
     const { from, to } = this.resolveRange(query.from, query.to);
 
+    /**
+     * The selected order status narrows the order population, and every order-derived
+     * figure below reads from that same population: counts, customers, the time series,
+     * the status breakdown, top products, assignments and cash due. Money keeps the Phase
+     * 2A rule on top of it - only PAID orders contribute revenue - so a status whose
+     * orders are unpaid reports zero revenue instead of redefining what revenue means.
+     */
+    const statusFilter = query.status ? { status: query.status } : {};
     const parentWhere: Prisma.OrderWhereInput = {
       placedAt: { gte: from, lte: to },
       ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...statusFilter,
     };
     const nestedWhere = {
       order: {
         placedAt: { gte: from, lte: to },
         ...(query.branchId ? { branchId: query.branchId } : {}),
+        ...statusFilter,
       },
     };
     /**
@@ -114,6 +124,7 @@ export class AnalyticsService {
       paymentStatus: 'PAID',
       placedAt: { gte: from, lte: to },
       ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...statusFilter,
     };
     const paidNestedWhere = { order: paidOrderWhere };
 
@@ -166,43 +177,60 @@ export class AnalyticsService {
     };
   }
 
+  /**
+   * Orders report export.
+   *
+   * Reads every matching order in bounded chunks rather than a single `take`, so a report
+   * can no longer be silently cut short at 1000 rows. Row order is newest-first by
+   * `placedAt` with `id` as a tiebreaker, which is a total order and therefore stable
+   * across the chunked reads. The selected `status` narrows the same order population the
+   * on-screen report uses, so the file and the screen describe one dataset.
+   */
   async ordersReportCsv(query: AdminReportQueryDto): Promise<string> {
     const db = this.prisma.requireClient();
     const { from, to } = this.resolveRange(query.from, query.to);
 
-    const rows = await db.order.findMany({
-      where: {
-        placedAt: { gte: from, lte: to },
-        ...(query.branchId ? { branchId: query.branchId } : {}),
-        ...(query.status ? { status: query.status } : {}),
-      },
-      orderBy: { placedAt: 'desc' },
-      take: 1000,
-      select: {
-        orderNumber: true,
-        placedAt: true,
-        status: true,
-        paymentStatus: true,
-        subtotalMinor: true,
-        discountMinor: true,
-        deliveryFeeMinor: true,
-        taxMinor: true,
-        totalMinor: true,
-        branch: { select: { name: true } },
-        items: { select: { quantity: true } },
-        payments: {
-          take: 1,
-          select: {
-            method: true,
-            collectedAt: true,
-            collectedByRole: true,
-            collectedById: true,
-          },
-        },
-      },
-    });
+    const where: Prisma.OrderWhereInput = {
+      placedAt: { gte: from, lte: to },
+      ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+    };
 
-    return toOrderCsv(rows);
+    const rows = await collectAllForExport<OrderReportRow>(
+      ({ skip, take }) =>
+        db.order.findMany({
+          where,
+          select: {
+            orderNumber: true,
+            placedAt: true,
+            status: true,
+            paymentStatus: true,
+            subtotalMinor: true,
+            discountMinor: true,
+            deliveryFeeMinor: true,
+            taxMinor: true,
+            totalMinor: true,
+            branch: { select: { name: true } },
+            items: { select: { quantity: true } },
+            payments: {
+              orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+              take: 1,
+              select: {
+                method: true,
+                collectedAt: true,
+                collectedByRole: true,
+                collectedById: true,
+              },
+            },
+          },
+          orderBy: [{ placedAt: 'desc' }, { id: 'desc' }],
+          skip,
+          take,
+        }) as Promise<OrderReportRow[]>,
+      'orders',
+    );
+
+    return buildCsvDocument(ORDER_REPORT_HEADER, toOrderReportRows(rows));
   }
 
   private resolveRange(fromRaw?: string, toRaw?: string): { from: Date; to: Date } {
@@ -486,8 +514,7 @@ export class AnalyticsService {
 
   /** 00:00:00.000 business time on the calendar day containing `date`. */
   private startOfDay(date: Date): Date {
-    const { year, month, day } = businessParts(date);
-    return fromBusinessWallMs(Date.UTC(year, month, day));
+    return startOfBusinessDay(date);
   }
 
   /** 23:59:59.999 business time on the calendar day containing `date`. */
@@ -496,92 +523,69 @@ export class AnalyticsService {
   }
 }
 
-/** Instant -> milliseconds of the same wall-clock reading taken in business time. */
-function toBusinessWallMs(date: Date): number {
-  return date.getTime() + BUSINESS_OFFSET_MINUTES * MINUTE_MS;
-}
+/**
+ * Column order for the orders report. This is an explicit list rather than an object
+ * spread, so the exported column order can never drift with property insertion order.
+ */
+const ORDER_REPORT_HEADER = [
+  'orderNumber',
+  'placedAtIst',
+  'branchName',
+  'status',
+  'paymentStatus',
+  'paymentMethod',
+  'itemCount',
+  'subtotalMinor',
+  'discountMinor',
+  'deliveryFeeMinor',
+  'taxMinor',
+  'totalMinor',
+  'collectedAtIst',
+  'collectedByRole',
+  'collectedById',
+] as const;
 
-/** Milliseconds of a business-time wall clock -> the real instant. */
-function fromBusinessWallMs(wallMs: number): Date {
-  return new Date(wallMs - BUSINESS_OFFSET_MINUTES * MINUTE_MS);
-}
+type OrderReportRow = {
+  orderNumber: string;
+  placedAt: Date;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  subtotalMinor: number;
+  discountMinor: number;
+  deliveryFeeMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  branch: { name: string };
+  items: Array<{ quantity: number }>;
+  payments: Array<{
+    method: PaymentMethod;
+    collectedAt: Date | null;
+    collectedByRole: string | null;
+    collectedById: string | null;
+  }>;
+};
 
-/** Calendar fields of `date` as read in business time. */
-function businessParts(date: Date): { year: number; month: number; day: number } {
-  const wall = new Date(toBusinessWallMs(date));
-  return {
-    year: wall.getUTCFullYear(),
-    month: wall.getUTCMonth(),
-    day: wall.getUTCDate(),
-  };
-}
-
-function csvCell(value: unknown): string {
-  const text = value == null ? '' : String(value);
-  if (/[",\n\r]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
-}
-
-function toOrderCsv(
-  rows: ReadonlyArray<{
-    orderNumber: string;
-    placedAt: Date;
-    status: OrderStatus;
-    paymentStatus: PaymentStatus;
-    subtotalMinor: number;
-    discountMinor: number;
-    deliveryFeeMinor: number;
-    taxMinor: number;
-    totalMinor: number;
-    branch: { name: string };
-    items: Array<{ quantity: number }>;
-    payments: Array<{
-      method: PaymentMethod;
-      collectedAt: Date | null;
-      collectedByRole: string | null;
-      collectedById: string | null;
-    }>;
-  }>,
-): string {
-  const header = [
-    'orderNumber',
-    'placedAt',
-    'branchName',
-    'status',
-    'paymentStatus',
-    'paymentMethod',
-    'itemCount',
-    'subtotalMinor',
-    'discountMinor',
-    'deliveryFeeMinor',
-    'taxMinor',
-    'totalMinor',
-    'collectedAt',
-    'collectedByRole',
-    'collectedById',
-  ];
-  const lines = rows.map((row) =>
-    [
+function toOrderReportRows(rows: ReadonlyArray<OrderReportRow>): CsvValue[][] {
+  return rows.map((row) => {
+    // One order can carry several payment rows (for example after a retry). The query
+    // already picks a single deterministic payment, so this is a total function.
+    const payment = row.payments[0];
+    return [
       row.orderNumber,
-      row.placedAt.toISOString(),
+      formatBusinessTimestamp(row.placedAt),
       row.branch.name,
       row.status,
       row.paymentStatus,
-      row.payments[0]?.method ?? '',
-      String(row.items.reduce((sum, item) => sum + item.quantity, 0)),
-      String(row.subtotalMinor),
-      String(row.discountMinor),
-      String(row.deliveryFeeMinor),
-      String(row.taxMinor),
-      String(row.totalMinor),
-      row.payments[0]?.collectedAt?.toISOString() ?? '',
-      row.payments[0]?.collectedByRole ?? '',
-      row.payments[0]?.collectedById ?? '',
-    ]
-      .map(csvCell)
-      .join(','),
-  );
-  return [header.map(csvCell).join(','), ...lines].join('\n');
+      payment?.method ?? '',
+      row.items.reduce((sum, item) => sum + item.quantity, 0),
+      row.subtotalMinor,
+      row.discountMinor,
+      row.deliveryFeeMinor,
+      row.taxMinor,
+      row.totalMinor,
+      payment?.collectedAt ? formatBusinessTimestamp(payment.collectedAt) : '',
+      payment?.collectedByRole ?? '',
+      payment?.collectedById ?? '',
+    ];
+  });
 }

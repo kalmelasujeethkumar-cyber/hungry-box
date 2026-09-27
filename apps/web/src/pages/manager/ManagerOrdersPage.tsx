@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { OrderStatus, OrderSummaryDto } from '@hungrybox/shared';
 import { branchOrdersApi } from '../../api/client';
@@ -8,10 +8,12 @@ import EmptyState from '../../components/EmptyState';
 import { FilterChips } from '../../components/FilterChips';
 import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
+import Pagination from '../../components/Pagination';
 import { StatusBadge } from '../../components/StatusBadge';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONES } from '../../features/orders/order-status';
 import { ORDER_STATUS_FILTERS } from '../../features/manager/manager-orders';
+import { BRANCH_ORDERS_PAGE_SIZE } from '../../features/manager/manager-orders';
 import { formatBusinessPlacedAt } from '../../lib/business-time';
 import { formatPaise } from '../../lib/money';
 import ManagerLayout from './ManagerLayout';
@@ -21,34 +23,57 @@ export default function ManagerOrdersPage(): JSX.Element {
   const { token } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState<OrderSummaryDto[]>([]);
-  const [status, setStatus] = useState<OrderStatus | undefined>(() => {
+  const [total, setTotal] = useState(0);
+  const status = useMemo(() => {
     const value = searchParams.get('status');
     return value && ORDER_STATUS_FILTERS.some((option) => option.value === value)
       ? (value as OrderStatus)
       : undefined;
-  });
+  }, [searchParams]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * The list is paged by the server, so the page number lives in the URL. A manager who
+   * filters to PREPARING, reads page 2 and then reloads or shares the link sees the same
+   * rows they were looking at.
+   */
+  const rawPage = Number(searchParams.get('page') ?? '1');
+  const requestedPage = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
 
   const refresh = useCallback(() => {
     if (!token) return;
     setLoading(true);
+    setError(null);
     branchOrdersApi
-      .list(token, status)
-      .then(setOrders)
+      .list(token, { status, page: requestedPage, limit: BRANCH_ORDERS_PAGE_SIZE })
+      .then((result) => {
+        setOrders(result.items);
+        setTotal(result.total);
+      })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Could not load orders.');
       })
       .finally(() => setLoading(false));
-  }, [token, status]);
+  }, [token, status, requestedPage]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   const applyStatus = (next: OrderStatus | undefined): void => {
-    setStatus(next);
     setSearchParams(next ? { status: next } : {}, { replace: true });
+  };
+
+  const applyPage = (next: number): void => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.set('page', String(next));
+        return params;
+      },
+      { replace: true },
+    );
   };
 
   return (
@@ -74,7 +99,11 @@ export default function ManagerOrdersPage(): JSX.Element {
           <EmptyState
             icon={<PackageIcon className="h-8 w-8" />}
             title="No orders here"
-            message="Orders placed in your branch will appear here."
+            message={
+              requestedPage > 1
+                ? 'This page is past the end of the list. Go back to see earlier orders.'
+                : 'Orders placed in your branch will appear here.'
+            }
           />
         </div>
       ) : (
@@ -104,6 +133,17 @@ export default function ManagerOrdersPage(): JSX.Element {
           ))}
         </ul>
       )}
+
+      {!loading ? (
+        <Pagination
+          page={requestedPage}
+          limit={BRANCH_ORDERS_PAGE_SIZE}
+          total={total}
+          shown={orders.length}
+          onPageChange={applyPage}
+          filtered={status !== undefined}
+        />
+      ) : null}
     </ManagerLayout>
   );
 }

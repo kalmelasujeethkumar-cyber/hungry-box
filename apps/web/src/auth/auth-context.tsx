@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { AuthUser } from '@hungrybox/shared';
 import { authApi } from '../api/client';
 import { SESSION_EXPIRED_EVENT } from '../api/session-expiry';
-import { clearSession, loadSession, saveSession } from './session-storage';
+import { clearSession, loadSession, markSessionExpired, saveSession } from './session-storage';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -50,6 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handleSessionExpired = () => {
+      /**
+       * Only an expired session is flagged. A deliberate sign-out must not leave a
+       * "your session expired" notice waiting on the login screen.
+       */
+      markSessionExpired();
       clearSession();
       setUser(null);
       setToken(null);

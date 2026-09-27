@@ -1,7 +1,7 @@
 import type { JSX } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { OrderSummaryDto } from '@hungrybox/shared';
+import type { BranchOrderCountsDto } from '@hungrybox/shared';
 import { branchOrdersApi } from '../../api/client';
 import { useAuth } from '../../auth/auth-context';
 import { LoadingState } from '../../components/LoadingState';
@@ -73,7 +73,7 @@ function StatCard({
 
 export default function ManagerHomePage(): JSX.Element {
   const { token, user } = useAuth();
-  const [orders, setOrders] = useState<OrderSummaryDto[]>([]);
+  const [counts, setCounts] = useState<BranchOrderCountsDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -81,9 +81,14 @@ export default function ManagerHomePage(): JSX.Element {
     if (!token) return;
     setLoading(true);
     setError(null);
+    /**
+     * The database counts the statuses. This used to download every order in the branch
+     * and filter it here, so the tiles were only ever as complete as one list request and
+     * the browser held the whole order table to draw four numbers.
+     */
     branchOrdersApi
-      .list(token)
-      .then(setOrders)
+      .counts(token)
+      .then(setCounts)
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Could not load branch activity.');
       })
@@ -93,14 +98,6 @@ export default function ManagerHomePage(): JSX.Element {
   useEffect(() => {
     refresh();
   }, [refresh]);
-
-  const countBy = (statuses: OrderSummaryDto['status'][]): number =>
-    orders.filter((order) => statuses.includes(order.status)).length;
-
-  const newOrders = countBy(['PLACED']);
-  const preparing = countBy(['CONFIRMED', 'PREPARING']);
-  const ready = countBy(['READY_FOR_PICKUP']);
-  const live = countBy(['OUT_FOR_DELIVERY']);
 
   return (
     <ManagerLayout kicker="Branch operations" title={`Overview · ${user?.name ?? 'Manager'}`}>
@@ -116,25 +113,25 @@ export default function ManagerHomePage(): JSX.Element {
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="New orders"
-            count={newOrders}
+            count={counts?.newOrders ?? 0}
             to={`${BRANCH_ORDERS_PATH}?status=PLACED`}
             accent="text-brand-orange"
           />
           <StatCard
             label="Preparing"
-            count={preparing}
+            count={counts?.preparing ?? 0}
             to={`${BRANCH_ORDERS_PATH}?status=PREPARING`}
             accent="text-brand-navy"
           />
           <StatCard
             label="Ready for pickup"
-            count={ready}
+            count={counts?.ready ?? 0}
             to={`${BRANCH_ORDERS_PATH}?status=READY_FOR_PICKUP`}
             accent="text-brand-teal"
           />
           <StatCard
             label="Out for delivery"
-            count={live}
+            count={counts?.outForDelivery ?? 0}
             to={`${BRANCH_ORDERS_PATH}?status=OUT_FOR_DELIVERY`}
             accent="text-yellow-600"
           />

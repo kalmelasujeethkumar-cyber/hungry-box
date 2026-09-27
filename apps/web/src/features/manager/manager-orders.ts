@@ -1,5 +1,11 @@
 import type { OrderStatus } from '@hungrybox/shared';
 
+/** Matches the API's default management order page size. */
+export const BRANCH_ORDERS_PAGE_SIZE = 25;
+
+/** Matches the API's maximum accepted order page size. */
+export const BRANCH_ORDERS_MAX_PAGE_SIZE = 100;
+
 export const ORDER_STATUS_FILTERS = [
   { value: undefined, label: 'All' },
   { value: 'PLACED', label: 'Placed' },

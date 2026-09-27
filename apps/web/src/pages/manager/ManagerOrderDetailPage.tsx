@@ -20,6 +20,7 @@ import {
   staffAdvanceTarget,
   staffCancellable,
 } from '../../features/manager/manager-orders';
+import { formatBusinessDateTime } from '../../lib/business-time';
 import { formatPaise } from '../../lib/money';
 import ManagerLayout from './ManagerLayout';
 import { BRANCH_ORDERS_PATH } from '../../routes/paths';
@@ -151,7 +152,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
                 tone={ORDER_STATUS_TONES[order.status]}
               />
               <span className="text-xs text-slate-500">
-                Placed {new Date(order.placedAt).toLocaleString('en-IN')}
+                Placed {formatBusinessDateTime(order.placedAt)}
               </span>
             </div>
             {error ? (
@@ -221,7 +222,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
                 <li key={event.id} className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-slate-700">{eventLabel(event.kind)}</span>
                   <span className="text-xs text-slate-400">
-                    {new Date(event.at).toLocaleString('en-IN')}
+                    {formatBusinessDateTime(event.at)}
                   </span>
                 </li>
               ))}
@@ -262,7 +263,7 @@ export default function ManagerOrderDetailPage(): JSX.Element {
                 </p>
                 {payment.method === 'COD' && payment.status === 'PAID' && payment.collectedAt ? (
                   <p className="mt-0.5 text-xs font-semibold text-emerald-700">
-                    Collected {new Date(payment.collectedAt).toLocaleString('en-IN')}
+                    Collected {formatBusinessDateTime(payment.collectedAt)}
                     {payment.collectedByRole === 'DELIVERY_PARTNER' ? ' · by partner' : ''}
                     {payment.collectedByRole === 'BRANCH_MANAGER' ? ' · by branch' : ''}
                   </p>

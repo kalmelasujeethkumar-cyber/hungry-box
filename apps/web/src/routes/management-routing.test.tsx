@@ -28,7 +28,24 @@ vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {},
   adminApi: { dashboard: vi.fn().mockResolvedValue(null) },
   branchesApi: { list: vi.fn().mockResolvedValue([]) },
-  branchOrdersApi: { list: vi.fn().mockResolvedValue([]) },
+  /**
+   * The order list, the home activity counts and the detail route all hit this client. The
+   * bare-array shape these mocks used to return would make the pages dereference `items` on
+   * undefined, and a missing `get` let ManagerOrderDetailPage throw into the router's error
+   * boundary - which the surrounding assertions still passed, so the route looked covered
+   * while the page never actually rendered.
+   */
+  branchOrdersApi: {
+    list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 25 }),
+    get: vi.fn().mockResolvedValue(null),
+    counts: vi.fn().mockResolvedValue({
+      newOrders: 0,
+      preparing: 0,
+      ready: 0,
+      outForDelivery: 0,
+      total: 0,
+    }),
+  },
   branchSettingsApi: { get: vi.fn().mockResolvedValue(null) },
 }));
 

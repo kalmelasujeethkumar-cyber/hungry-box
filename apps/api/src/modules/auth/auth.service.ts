@@ -59,6 +59,15 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
+    /**
+     * The JWT is stateless and stays valid until it expires, so an account suspended
+     * after login would otherwise keep a working session until then. Re-checking the
+     * account on every session read means the server - not the browser's copy of a token -
+     * decides whether the caller is still allowed in.
+     */
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
     return toPublicUser(user);
   }
 

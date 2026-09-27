@@ -1,6 +1,9 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import type { AuditListQuery, AuditListResultDto, UserRole } from '@hungrybox/shared';
 import type { Prisma, PrismaClient } from '../../generated/prisma/client';
+import { formatBusinessTimestamp, resolveBusinessRange } from '../../common/utils/business-time';
+import { buildCsvDocument, type CsvValue } from '../../common/utils/csv';
+import { collectAllForExport } from '../../common/utils/paginated-export';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface AuditEntry {
@@ -143,16 +146,28 @@ export class AuditService {
     };
   }
 
-  /** CSV representation of the same branch-scoped query. */
+  /**
+   * CSV of the same branch-scoped query the list endpoint serves.
+   *
+   * Reads every matching event in bounded chunks rather than reusing the page-size limit,
+   * so an export is never silently cut short. `createdAt` is the business-meaningful
+   * ordering and `id` breaks ties, which together form a total order and keep the chunked
+   * reads from repeating or dropping a row.
+   */
   async exportCsv(actor: AuditActor, query: AuditListQuery): Promise<string> {
     const db = this.prisma.requireClient();
     const where = this.buildWhere(actor, query);
-    const rows = await db.auditEvent.findMany({
-      where,
-      select: auditEventSelect,
-      orderBy: { createdAt: 'desc' },
-      take: MAX_LIMIT,
-    });
+    const rows = await collectAllForExport<AuditEventRow>(
+      ({ skip, take }) =>
+        db.auditEvent.findMany({
+          where,
+          select: auditEventSelect,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip,
+          take,
+        }) as Promise<AuditEventRow[]>,
+      'audit',
+    );
     return toCsv(rows);
   }
 
@@ -178,9 +193,13 @@ export class AuditService {
       where.entityType = query.entityType;
     }
     if (query.from || query.to) {
+      // Bare `YYYY-MM-DD` bounds name a whole business day. Passing them to `new Date()`
+      // would compare against UTC midnight (05:30 IST) and silently drop most of the day
+      // the caller selected, so both edges are expanded in business time instead.
+      const { from, to } = resolveBusinessRange(query.from, query.to);
       where.createdAt = {
-        ...(query.from ? { gte: new Date(query.from) } : {}),
-        ...(query.to ? { lte: new Date(query.to) } : {}),
+        ...(query.from ? { gte: from } : {}),
+        ...(query.to ? { lte: to } : {}),
       };
     }
     return where;
@@ -242,52 +261,41 @@ function toAuditEventDto(row: {
   };
 }
 
-function csvCell(value: unknown): string {
-  const text = value == null ? '' : String(value);
-  if (/[",\n\r]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
-}
+type AuditEventRow = {
+  id: string;
+  actorRole: string;
+  actorId: string | null;
+  kind: string;
+  entityType: string;
+  entityId: string | null;
+  branchId: string | null;
+  message: string | null;
+  createdAt: Date;
+};
 
-function toCsv(
-  rows: ReadonlyArray<{
-    id: string;
-    actorRole: string;
-    actorId: string | null;
-    kind: string;
-    entityType: string;
-    entityId: string | null;
-    branchId: string | null;
-    message: string | null;
-    createdAt: Date;
-  }>,
-): string {
-  const header = [
-    'id',
-    'createdAt',
-    'actorRole',
-    'actorId',
-    'kind',
-    'entityType',
-    'entityId',
-    'branchId',
-    'message',
-  ];
-  const lines = rows.map((row) =>
-    [
-      row.id,
-      row.createdAt.toISOString(),
-      row.actorRole,
-      row.actorId,
-      row.kind,
-      row.entityType,
-      row.entityId,
-      row.branchId,
-      row.message,
-    ]
-      .map(csvCell)
-      .join(','),
-  );
-  return [header.map(csvCell).join(','), ...lines].join('\n');
+const AUDIT_CSV_HEADER = [
+  'id',
+  'createdAtIst',
+  'actorRole',
+  'actorId',
+  'kind',
+  'entityType',
+  'entityId',
+  'branchId',
+  'message',
+] as const;
+
+function toCsv(rows: ReadonlyArray<AuditEventRow>): string {
+  const values: CsvValue[][] = rows.map((row) => [
+    row.id,
+    formatBusinessTimestamp(row.createdAt),
+    row.actorRole,
+    row.actorId,
+    row.kind,
+    row.entityType,
+    row.entityId,
+    row.branchId,
+    row.message,
+  ]);
+  return buildCsvDocument(AUDIT_CSV_HEADER, values);
 }

@@ -252,6 +252,30 @@ export interface BranchOrderListQuery {
   status?: OrderStatus;
   from?: string;
   to?: string;
+  /** 1-based page number. Defaults to 1. */
+  page?: number;
+  /** Rows per page, capped server-side. Defaults to 25. */
+  limit?: number;
+}
+
+/**
+ * A page of management orders. The total is the count matching the same filters, so a
+ * caller can tell a short page from the end of the list instead of assuming.
+ */
+export interface BranchOrderListResult {
+  items: OrderSummaryDto[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** Server-computed order counts for the branch manager dashboard. */
+export interface BranchOrderCountsDto {
+  newOrders: number;
+  preparing: number;
+  ready: number;
+  outForDelivery: number;
+  total: number;
 }
 
 export type BranchAdvanceStatus = Extract<

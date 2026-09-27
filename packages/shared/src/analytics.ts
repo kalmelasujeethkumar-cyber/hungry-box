@@ -8,6 +8,21 @@ export interface AdminDashboardQuery {
   from?: string;
   to?: string;
   bucket?: DashboardBucket;
+  /**
+   * Narrows every order-derived figure to orders in this status: counts, customers,
+   * revenue, AOV, the time series, the status breakdown, top products, delivery
+   * assignments and cash due. It is the same population the orders-report CSV selects,
+   * so a status-filtered screen and its download describe one dataset.
+   *
+   * Money keeps the Phase 2A accounting rules regardless of this filter: `revenueMinor`
+   * and the payment-method totals still count only PAID orders, so selecting a status
+   * whose orders are not yet paid legitimately reports zero revenue rather than
+   * reinterpreting what "revenue" means.
+   *
+   * Branch status counts (`activeBranches`, `pausedBranches`, `inactiveBranches`) are
+   * branch entities rather than orders, so they ignore this filter.
+   */
+  status?: OrderStatus;
 }
 
 export interface OrderStatusAggregate {

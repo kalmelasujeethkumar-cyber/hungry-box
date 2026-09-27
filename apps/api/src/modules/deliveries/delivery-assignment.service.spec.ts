@@ -373,6 +373,61 @@ describe('DeliveryAssignmentService.list', () => {
       expect.objectContaining({ where: expect.objectContaining({ branchId: 'b2' }) }),
     );
   });
+
+  it('defaults the unfiltered board to in-progress assignments only', async () => {
+    const { service, db } = buildService();
+    db.deliveryAssignment.findMany.mockResolvedValue([]);
+
+    await service.list(manager, {});
+
+    /**
+     * Regression: an absent status used to add no status clause at all, so the "In progress"
+     * tab returned the branch's entire delivery history - delivered, rejected and cancelled
+     * runs included - and the manager read settled work as a live backlog.
+     */
+    expect(db.deliveryAssignment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ['ASSIGNED', 'ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY'] },
+        }),
+      }),
+    );
+  });
+
+  it('excludes terminal assignments from the in-progress board for a super admin too', async () => {
+    const { service, db } = buildService();
+    db.deliveryAssignment.findMany.mockResolvedValue([]);
+
+    await service.list(superAdmin, { branchId: 'b1' });
+
+    expect(db.deliveryAssignment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ['ASSIGNED', 'ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY'] },
+        }),
+      }),
+    );
+  });
+
+  it('does not let a manager widen the board by passing a foreign branch', async () => {
+    const { service, db } = buildService();
+    db.deliveryAssignment.findMany.mockResolvedValue([]);
+
+    /**
+     * The manager's own branch must win over a hostile branchId, and the in-progress
+     * default must still apply - branch scoping must not become an escape hatch back to
+     * the full-fleet history.
+     */
+    await service.list(manager, { branchId: 'b-other' });
+
+    const call = db.deliveryAssignment.findMany.mock.calls[0]?.[0] as {
+      where: Record<string, unknown>;
+    };
+    expect(call.where.branchId).toBe('b1');
+    expect(call.where.status).toEqual({
+      in: ['ASSIGNED', 'ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY'],
+    });
+  });
 });
 
 describe('DeliveryAssignmentService.accept / reject', () => {

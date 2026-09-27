@@ -119,10 +119,30 @@ describe('AuditService.list', () => {
     expect(findManyCall.skip).toBe(20);
     expect(findManyCall.take).toBe(10);
   });
+
+  it('expands a bare calendar date to the whole business day', async () => {
+    const db = {
+      auditEvent: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+      },
+    };
+    const { service } = buildService(db);
+
+    await service.list(SUPER_ADMIN, { from: '2026-09-24', to: '2026-09-24' });
+
+    // A bare YYYY-MM-DD is parsed as UTC midnight, which is 05:30 IST. Comparing against
+    // that raw instant silently dropped the first 5h30m of the day and everything after
+    // 05:30, so both edges are expanded in business time instead.
+    expect(db.auditEvent.findMany.mock.calls[0]?.[0]?.where.createdAt).toEqual({
+      gte: new Date('2026-09-23T18:30:00.000Z'),
+      lte: new Date('2026-09-24T18:29:59.999Z'),
+    });
+  });
 });
 
 describe('AuditService.exportCsv', () => {
-  it('exports a CSV with headers and escaped cells', async () => {
+  it('exports a deliberate column order with escaped cells', async () => {
     const db = {
       auditEvent: {
         findMany: vi
@@ -136,10 +156,87 @@ describe('AuditService.exportCsv', () => {
 
     const csv = await service.exportCsv(MANAGER, {});
 
-    expect(csv).toContain(
-      'id,createdAt,actorRole,actorId,kind,entityType,entityId,branchId,message',
+    expect(csv.split('\n')[0]).toBe(
+      'id,createdAtIst,actorRole,actorId,kind,entityType,entityId,branchId,message',
     );
     expect(csv).toContain('"Order ""cancelled"", now"');
+  });
+
+  it('stamps rows in business time', async () => {
+    const db = {
+      auditEvent: { findMany: vi.fn().mockResolvedValue([eventRow()]) },
+    };
+    const { service } = buildService(db);
+
+    const csv = await service.exportCsv(MANAGER, {});
+
+    // 10:00Z is 15:30 IST on 24 Sep.
+    expect(csv).toContain('evt-1,2026-09-24 15:30:00 +05:30,SUPER_ADMIN');
+  });
+
+  it('orders newest-first with a deterministic tiebreak', async () => {
+    const findMany = vi.fn().mockResolvedValue([eventRow()]);
+    const { service } = buildService({ auditEvent: { findMany } });
+
+    await service.exportCsv(MANAGER, {});
+
+    expect(findMany.mock.calls[0][0].orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+  });
+
+  it('reads every matching event instead of stopping at the page-size limit', async () => {
+    const total = 2500;
+    const findMany = vi.fn().mockImplementation(({ skip, take }: { skip: number; take: number }) =>
+      Promise.resolve(
+        Array.from({ length: Math.min(take, total - skip) }, (_, i) =>
+          eventRow({ id: `evt-${skip + i}` }),
+        ),
+      ),
+    );
+    const { service } = buildService({ auditEvent: { findMany } });
+
+    const csv = await service.exportCsv(MANAGER, {});
+
+    // Header plus every one of the 2500 events: nothing is dropped.
+    expect(csv.split('\n')).toHaveLength(total + 1);
+    expect(findMany).toHaveBeenCalledTimes(3);
+    expect(findMany.mock.calls.map((c) => c[0].skip)).toEqual([0, 1000, 2000]);
+    // The page-size constant must no longer cap an export.
+    expect(findMany.mock.calls[0][0].take).toBe(1000);
+  });
+
+  it('neutralises spreadsheet formula injection in free-text messages', async () => {
+    const db = {
+      auditEvent: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            eventRow({ message: '=HYPERLINK("http://evil","click"),note' }),
+            eventRow({ id: 'evt-2', message: '-2+3+cmd|\' /C calc\'!A1' }),
+          ]),
+      },
+    };
+    const { service } = buildService(db);
+
+    const csv = await service.exportCsv(MANAGER, {});
+
+    expect(csv).toContain(`"'=HYPERLINK(""http://evil"",""click""),note"`);
+    // This payload contains no comma, quote or newline, so it needs no RFC 4180 quoting;
+    // only the text-marker apostrophe is added.
+    expect(csv).toContain(`'-2+3+cmd|' /C calc'!A1`);
+  });
+
+  it('leaves an ordinary message untouched', async () => {
+    const db = {
+      auditEvent: {
+        findMany: vi.fn().mockResolvedValue([eventRow({ message: 'Partner KYC verified' })]),
+      },
+    };
+    const { service } = buildService(db);
+
+    const csv = await service.exportCsv(MANAGER, {});
+
+    expect(csv).toContain('Partner KYC verified');
+    expect(csv).not.toContain("'Partner");
   });
 
   it('scopes the export to the managers own branch', async () => {
@@ -154,6 +251,17 @@ describe('AuditService.exportCsv', () => {
 
     expect(db.auditEvent.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ branchId: 'b1' }) }),
+    );
+  });
+
+  it('emits a header-only document when nothing matches', async () => {
+    const db = { auditEvent: { findMany: vi.fn().mockResolvedValue([]) } };
+    const { service } = buildService(db);
+
+    const csv = await service.exportCsv(MANAGER, {});
+
+    expect(csv).toBe(
+      'id,createdAtIst,actorRole,actorId,kind,entityType,entityId,branchId,message',
     );
   });
 });

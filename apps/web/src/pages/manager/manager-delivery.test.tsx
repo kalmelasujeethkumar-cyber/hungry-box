@@ -77,6 +77,7 @@ const PARTNER_LIST: DeliveryPartnerListItemDto[] = [
     activeDeliveryCount: 0,
     distanceKm: 2.1,
     joinedAt: '2026-09-01T00:00:00.000Z',
+    kyc: { overallState: 'VERIFIED', hasAadhaar: true, hasDrivingLicense: true },
   },
   {
     id: 'dp-2',
@@ -89,6 +90,7 @@ const PARTNER_LIST: DeliveryPartnerListItemDto[] = [
     activeDeliveryCount: 0,
     distanceKm: null,
     joinedAt: null,
+    kyc: { overallState: 'INCOMPLETE', hasAadhaar: false, hasDrivingLicense: false },
   },
 ];
 
@@ -229,29 +231,39 @@ const KYC_STATUS = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  MOCK_APIS.branchDeliveryApi.listPartners.mockResolvedValue(PARTNER_LIST);
+  MOCK_APIS.branchDeliveryApi.listPartners.mockResolvedValue({
+    items: PARTNER_LIST,
+    total: PARTNER_LIST.length,
+    limit: 50,
+    offset: 0,
+  });
   MOCK_APIS.branchDeliveryApi.getPartner.mockResolvedValue(PARTNER_DETAIL);
   MOCK_APIS.branchDeliveryApi.listAssignments.mockResolvedValue(ASSIGNMENT_LIST);
   MOCK_APIS.branchDeliveryApi.candidates.mockResolvedValue(CANDIDATES);
   MOCK_APIS.branchKycApi.get.mockResolvedValue(KYC_STATUS);
   MOCK_APIS.branchSettingsApi.get.mockResolvedValue(BRANCH);
-  MOCK_APIS.branchOrdersApi.list.mockResolvedValue([
-    {
-      id: 'ord-9',
-      orderNumber: 'HB-20260923-000007',
-      status: 'READY_FOR_PICKUP',
-      paymentStatus: 'PAID',
-      branch: BRANCH,
-      itemCount: 2,
-      subtotalMinor: 40000,
-      discountMinor: 0,
-      deliveryFeeMinor: 3000,
-      taxMinor: 0,
-      totalMinor: 43000,
-      placedAt: '2026-09-23T10:00:00.000Z',
-      cancelledAt: null,
-    },
-  ]);
+  MOCK_APIS.branchOrdersApi.list.mockResolvedValue({
+    items: [
+      {
+        id: 'ord-9',
+        orderNumber: 'HB-20260923-000007',
+        status: 'READY_FOR_PICKUP',
+        paymentStatus: 'PAID',
+        branch: BRANCH,
+        itemCount: 2,
+        subtotalMinor: 40000,
+        discountMinor: 0,
+        deliveryFeeMinor: 3000,
+        taxMinor: 0,
+        totalMinor: 43000,
+        placedAt: '2026-09-23T10:00:00.000Z',
+        cancelledAt: null,
+      },
+    ],
+    total: 1,
+    page: 1,
+    limit: 100,
+  });
 });
 
 describe('manager partner list', () => {
@@ -274,7 +286,12 @@ describe('manager partner list', () => {
       profile: PARTNER_DETAIL,
       temporaryPassword: 'aA1bB2c',
     });
-    MOCK_APIS.branchDeliveryApi.listPartners.mockResolvedValue([PARTNER_LIST[0]]);
+    MOCK_APIS.branchDeliveryApi.listPartners.mockResolvedValue({
+      items: [PARTNER_LIST[0]],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    });
     const user = userEvent.setup();
     render(
       <MemoryRouter>

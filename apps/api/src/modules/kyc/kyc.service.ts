@@ -11,7 +11,6 @@ import type {
   KycDocumentDto,
   KycDocumentType,
   KycListItemDto,
-  KycOverallState,
   KycStatusDto,
   UserRole,
 } from '@hungrybox/shared';
@@ -26,6 +25,7 @@ import {
 import type { PrivateDocumentFile, PrivateDocumentStorageProvider } from '../media/private-document-storage.interface';
 import { validatePrivateKycDocument } from '../media/private-document-validator';
 import type { PrivateDocumentFormat } from '../media/private-document-validator';
+import { toKycSummary } from '../../common/utils/kyc-summary';
 import type { ReviewKycDocumentDto } from './dto/review-kyc-document.dto';
 
 export interface KycActor {
@@ -398,36 +398,13 @@ function toKycDocumentDto(
   };
 }
 
-function toKycOverallState(documents: ReadonlyArray<{ type: string; status: string }>): KycOverallState {
-  const aadhaar = documents.find((document) => document.type === 'AADHAAR');
-  const drivingLicense = documents.find((document) => document.type === 'DRIVING_LICENSE');
-  if (
-    aadhaar?.status === 'VERIFIED' &&
-    drivingLicense?.status === 'VERIFIED'
-  ) {
-    return 'VERIFIED';
-  }
-  if (
-    aadhaar?.status === 'REJECTED' ||
-    drivingLicense?.status === 'REJECTED'
-  ) {
-    return 'ACTION_REQUIRED';
-  }
-  const anyUploaded = documents.some(
-    (document) =>
-      (document.type === 'AADHAAR' || document.type === 'DRIVING_LICENSE') &&
-      document.status !== 'PENDING',
-  );
-  return anyUploaded ? 'AWAITING_REVIEW' : 'INCOMPLETE';
-}
-
 function toKycStatusDto(profile: KycProfileRow): KycStatusDto {
   return {
     partnerId: profile.partnerId,
     fullName: profile.fullName,
     branchId: profile.branchId,
     branchName: profile.branch.name,
-    overallState: toKycOverallState(profile.documents),
+    overallState: toKycSummary(profile.documents).overallState,
     documents: KYC_DOCUMENT_TYPES.map((type) =>
       toKycDocumentDto(type, profile.documents.find((document) => document.type === type)),
     ),
@@ -447,7 +424,7 @@ function toKycListItemDto(row: {
     fullName: row.fullName,
     mobile: row.mobile ?? '',
     status: row.status,
-    overallState: toKycOverallState(row.documents),
+    overallState: toKycSummary(row.documents).overallState,
     hasAadhaar: row.documents.some(
       (document) => document.type === 'AADHAAR' && document.status !== 'PENDING',
     ),

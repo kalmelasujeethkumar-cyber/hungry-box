@@ -35,6 +35,7 @@ const MOCK_AUTH = vi.hoisted(() => ({
 const MOCK_APIS = vi.hoisted(() => ({
   branchOrdersApi: {
     list: vi.fn(),
+    counts: vi.fn(),
     get: vi.fn(),
     advanceStatus: vi.fn(),
     cancel: vi.fn(),
@@ -210,7 +211,19 @@ const AUDIT_RESULT: AuditListResultDto = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  MOCK_APIS.branchOrdersApi.list.mockResolvedValue([orderSummary()]);
+  MOCK_APIS.branchOrdersApi.list.mockResolvedValue({
+    items: [orderSummary()],
+    total: 1,
+    page: 1,
+    limit: 25,
+  });
+  MOCK_APIS.branchOrdersApi.counts.mockResolvedValue({
+    newOrders: 0,
+    preparing: 0,
+    ready: 0,
+    outForDelivery: 0,
+    total: 0,
+  });
   MOCK_APIS.branchOrdersApi.get.mockResolvedValue(orderDetail());
   MOCK_APIS.branchOrdersApi.collectCod.mockResolvedValue(undefined);
   MOCK_APIS.branchProductsApi.list.mockResolvedValue([branchProduct()]);
@@ -240,7 +253,59 @@ describe('manager orders', () => {
 
     await screen.findByText('HB-20260924-000001');
     await waitFor(() =>
-      expect(MOCK_APIS.branchOrdersApi.list).toHaveBeenCalledWith('test-token', 'PREPARING'),
+      expect(MOCK_APIS.branchOrdersApi.list).toHaveBeenCalledWith('test-token', {
+        status: 'PREPARING',
+        page: 1,
+        limit: 25,
+      }),
+    );
+  });
+
+  it('paginates through the server-paged order list', async () => {
+    const user = userEvent.setup();
+    MOCK_APIS.branchOrdersApi.list.mockResolvedValue({
+      items: [orderSummary()],
+      total: 60,
+      page: 1,
+      limit: 25,
+    });
+    render(
+      <MemoryRouter initialEntries={['/admin/branch/orders']}>
+        <ManagerOrdersPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId('pagination-summary')).toHaveTextContent(
+      'Showing 1–1 of 60',
+    );
+    expect(screen.getByTestId('pagination-position')).toHaveTextContent('Page 1 of 3');
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    await waitFor(() =>
+      expect(MOCK_APIS.branchOrdersApi.list).toHaveBeenCalledWith('test-token', {
+        status: undefined,
+        page: 2,
+        limit: 25,
+      }),
+    );
+  });
+
+  it('says how many orders match instead of implying the page is everything', async () => {
+    MOCK_APIS.branchOrdersApi.list.mockResolvedValue({
+      items: [orderSummary()],
+      total: 7,
+      page: 1,
+      limit: 25,
+    });
+    render(
+      <MemoryRouter initialEntries={['/admin/branch/orders?status=PLACED']}>
+        <ManagerOrdersPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId('pagination-summary')).toHaveTextContent(
+      'Showing 1–1 of 7 matching',
     );
   });
 
@@ -806,6 +871,36 @@ describe('manager audit log', () => {
         'test-token',
       ),
     );
+  });
+
+  it('sends the selected business dates as bare days, not browser-zone instants', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ManagerAuditPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Branch product updated for Chicken Biryani');
+    await user.type(screen.getByLabelText('From'), '2026-09-01');
+    await user.type(screen.getByLabelText('To'), '2026-09-30');
+
+    await waitFor(() =>
+      expect(MOCK_APIS.branchAuditApi.list).toHaveBeenCalledWith(
+        expect.objectContaining({ from: '2026-09-01', to: '2026-09-30' }),
+        'test-token',
+      ),
+    );
+    /**
+     * The old code ran `new Date('2026-09-01').toISOString()`, which resolves in the
+     * browser's own zone. In IST that produced 2026-08-31T18:30:00.000Z, so the range
+     * started before the day the manager picked and the API could not expand it to a
+     * whole business day. Assert the exact bare value to keep that from returning.
+     */
+    const lastCall =
+      MOCK_APIS.branchAuditApi.list.mock.calls[MOCK_APIS.branchAuditApi.list.mock.calls.length - 1];
+    expect(lastCall?.[0]?.from).toBe('2026-09-01');
+    expect(lastCall?.[0]?.to).toBe('2026-09-30');
   });
 
   it('exports the CSV for the current query', async () => {

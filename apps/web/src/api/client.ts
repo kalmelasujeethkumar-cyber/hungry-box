@@ -7,6 +7,9 @@ import type {
   AuditListResultDto,
   AuthUser,
   BranchDto,
+  BranchOrderCountsDto,
+  BranchOrderListQuery,
+  BranchOrderListResult,
   BranchProductDto,
   CancelOrderInput,
   CartSummary,
@@ -30,7 +33,7 @@ import type {
   DeliveryAssignmentListItemDto,
   DeliveryAssignmentStatus,
   DeliveryPartnerCandidateDto,
-  DeliveryPartnerListItemDto,
+  DeliveryPartnerListResult,
   DeliveryPartnerProfileDto,
   DeliveryTrackingDto,
   DevPaymentSimulateInput,
@@ -404,14 +407,16 @@ export const branchKycApi = {
 };
 
 export const branchOrdersApi = {
-  list: (token: string, status?: OrderStatus) =>
-    apiRequest<OrderSummaryDto[]>(`/branch/orders${queryString(status ? { status } : {})}`, {
-      token,
-    }),
+  list: (token: string, query: BranchOrderListQuery = {}) =>
+    apiRequest<BranchOrderListResult>(`/branch/orders${queryString(query)}`, { token }),
   listGlobal: (
     token: string,
-    query: { branchId?: string; status?: OrderStatus; from?: string; to?: string },
-  ) => apiRequest<OrderSummaryDto[]>(`/branch/orders${queryString(query)}`, { token }),
+    query: BranchOrderListQuery,
+  ) => apiRequest<BranchOrderListResult>(`/branch/orders${queryString(query)}`, { token }),
+  counts: (token: string, query?: Pick<BranchOrderListQuery, 'branchId' | 'from' | 'to'>) =>
+    apiRequest<BranchOrderCountsDto>(`/branch/orders/counts${queryString(query ?? {})}`, {
+      token,
+    }),
   get: (orderId: string, token: string) =>
     apiRequest<OrderDetailDto>(`/branch/orders/${orderId}`, { token }),
   advanceStatus: (orderId: string, status: OrderStatus, token: string) =>
@@ -521,9 +526,16 @@ export const branchAuditApi = {
 export const branchDeliveryApi = {
   listPartners: (
     token: string,
-    query?: { status?: string; availability?: string; search?: string; branchId?: string },
+    query?: {
+      status?: string;
+      availability?: string;
+      search?: string;
+      branchId?: string;
+      limit?: number;
+      offset?: number;
+    },
   ) =>
-    apiRequest<DeliveryPartnerListItemDto[]>(`/branch/partners${queryString(query ?? {})}`, {
+    apiRequest<DeliveryPartnerListResult>(`/branch/partners${queryString(query ?? {})}`, {
       token,
     }),
   getPartner: (partnerId: string, token: string) =>

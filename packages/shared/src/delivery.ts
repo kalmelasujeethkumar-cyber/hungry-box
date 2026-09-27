@@ -1,3 +1,4 @@
+import type { KycOverallState } from './kyc';
 import type { OrderStatus, PaymentMethod, PaymentStatus } from './orders';
 
 export const DELIVERY_PARTNER_STATUSES = [
@@ -121,6 +122,21 @@ export interface DeliveryPartnerListItemDto {
   activeDeliveryCount: number;
   distanceKm: number | null;
   joinedAt: string | null;
+  /**
+   * Document state for this row, computed on the server from the same query.
+   *
+   * The list used to be decorated by fetching every KYC row in the fleet and joining in
+   * the browser, which made a paged partner list still cost one row per partner. Carrying
+   * the summary on the row keeps a page of partners to one page of work.
+   *
+   * Only the two document flags and the overall state are included; document ids, storage
+   * paths and verification notes stay behind the KYC endpoints.
+   */
+  kyc: {
+    overallState: KycOverallState;
+    hasAadhaar: boolean;
+    hasDrivingLicense: boolean;
+  };
 }
 
 /** Eligible candidate shown to a manager when assigning an order. */
@@ -133,6 +149,20 @@ export interface DeliveryPartnerCandidateDto {
   online: boolean;
   activeDeliveryCount: number;
   distanceKm: number | null;
+}
+
+/**
+ * A page of partner rows.
+ *
+ * `total` counts every row matching the filters, not the rows in this page, so the
+ * management list can show "showing 50 of 312" and offer further pages instead of
+ * silently presenting the first slice as if it were the whole fleet.
+ */
+export interface DeliveryPartnerListResult {
+  items: DeliveryPartnerListItemDto[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface CreateDeliveryPartnerInput {
