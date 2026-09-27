@@ -446,6 +446,93 @@ describe('checkout flow', () => {
     expect(MOCK_APIS.paymentsApi.devSimulate).toHaveBeenCalledTimes(1);
   });
 
+  it('reuses one idempotency key when a failed online placement is retried', async () => {
+    const user = userEvent.setup();
+    MOCK_APIS.ordersApi.create
+      .mockRejectedValueOnce(new Error('Network request failed'))
+      .mockResolvedValueOnce(ORDER_PREPARING);
+    renderCheckout();
+
+    const payButton = await screen.findByRole('button', { name: 'Pay ₹430' });
+    await waitFor(() => expect(payButton).toBeEnabled());
+    await user.click(payButton);
+    await user.click(await screen.findByRole('button', { name: 'Approve test payment' }));
+
+    await waitFor(() => expect(MOCK_APIS.ordersApi.create).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Network request failed')).toBeInTheDocument();
+    const firstKey = MOCK_APIS.ordersApi.create.mock.calls[0][0].idempotencyKey;
+
+    // The first attempt may or may not have committed, so the retry has to
+    // replay that same attempt rather than start a second one.
+    await user.click(screen.getByRole('button', { name: 'Pay ₹430' }));
+    await user.click(await screen.findByRole('button', { name: 'Approve test payment' }));
+
+    await waitFor(() => expect(MOCK_APIS.ordersApi.create).toHaveBeenCalledTimes(2));
+    const secondKey = MOCK_APIS.ordersApi.create.mock.calls[1][0].idempotencyKey;
+    expect(secondKey).toBe(firstKey);
+    expect(await screen.findByText('Order placed, view it in your orders')).toBeInTheDocument();
+  });
+
+  it('reuses one idempotency key when a failed cash-on-delivery placement is retried', async () => {
+    const user = userEvent.setup();
+    MOCK_APIS.checkoutApi.preview.mockResolvedValue(PREVIEW_COD);
+    MOCK_APIS.ordersApi.createCod
+      .mockRejectedValueOnce(new Error('Network request failed'))
+      .mockResolvedValueOnce(ORDER_PREPARING);
+    renderCheckout();
+
+    const payButton = await screen.findByRole('button', { name: 'Pay ₹430' });
+    await waitFor(() => expect(payButton).toBeEnabled());
+    await user.click(screen.getByLabelText('Cash on delivery'));
+
+    const placeButton = () =>
+      screen.getByRole('button', { name: 'Place order · Pay ₹430 on delivery' });
+    await user.click(placeButton());
+
+    await waitFor(() => expect(MOCK_APIS.ordersApi.createCod).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Network request failed')).toBeInTheDocument();
+    const firstKey = MOCK_APIS.ordersApi.createCod.mock.calls[0][0].idempotencyKey;
+
+    await user.click(placeButton());
+
+    await waitFor(() => expect(MOCK_APIS.ordersApi.createCod).toHaveBeenCalledTimes(2));
+    const secondKey = MOCK_APIS.ordersApi.createCod.mock.calls[1][0].idempotencyKey;
+    expect(secondKey).toBe(firstKey);
+    expect(await screen.findByText('Order placed, view it in your orders')).toBeInTheDocument();
+  });
+
+  it('starts a new idempotency key when the customer switches delivery address', async () => {
+    const user = userEvent.setup();
+    MOCK_APIS.addressApi.list.mockResolvedValue([
+      ADDRESS_A,
+      { ...ADDRESS_A, id: 'addr-b', label: 'WORK', streetArea: 'Second Street', isDefault: false },
+    ]);
+    MOCK_APIS.ordersApi.create
+      .mockRejectedValueOnce(new Error('Network request failed'))
+      .mockResolvedValue(ORDER_PREPARING);
+    renderCheckout();
+
+    const payButton = await screen.findByRole('button', { name: 'Pay ₹430' });
+    await waitFor(() => expect(payButton).toBeEnabled());
+    await user.click(payButton);
+    await user.click(await screen.findByRole('button', { name: 'Approve test payment' }));
+
+    await waitFor(() => expect(MOCK_APIS.ordersApi.create).toHaveBeenCalledTimes(1));
+    const firstKey = MOCK_APIS.ordersApi.create.mock.calls[0][0].idempotencyKey;
+
+    // A different address is a different order, so replaying the old key would
+    // hand the customer an order for the address they just abandoned.
+    await user.click(await screen.findByLabelText(/WORK/));
+    await waitFor(() => expect(payButton).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Pay ₹430' }));
+    await user.click(await screen.findByRole('button', { name: 'Approve test payment' }));
+
+    await waitFor(() => expect(MOCK_APIS.ordersApi.create).toHaveBeenCalledTimes(2));
+    const secondCall = MOCK_APIS.ordersApi.create.mock.calls[1][0];
+    expect(secondCall.addressId).toBe('addr-b');
+    expect(secondCall.idempotencyKey).not.toBe(firstKey);
+  });
+
   it('places a cash-on-delivery order straight through without a gateway payment', async () => {
     const user = userEvent.setup();
     MOCK_APIS.checkoutApi.preview.mockResolvedValue(PREVIEW_COD);

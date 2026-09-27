@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type {
@@ -106,6 +107,8 @@ export class DeliveryAssignmentService {
     private readonly notifications: NotificationsService,
   ) {}
 
+  private readonly logger = new Logger(DeliveryAssignmentService.name);
+
   async assign(
     actor: DeliveryStaffActor,
     orderId: string,
@@ -115,7 +118,7 @@ export class DeliveryAssignmentService {
     const enforcedBranchId = this.enforcedBranchId(actor);
     const order = await db.order.findUnique({
       where: { id: orderId },
-      select: { id: true, branchId: true, status: true, orderNumber: true, userId: true },
+      select: { id: true, branchId: true, status: true, orderNumber: true },
     });
     if (!order || (enforcedBranchId !== null && order.branchId !== enforcedBranchId)) {
       throw new NotFoundException('Order not found');
@@ -666,6 +669,16 @@ export class DeliveryAssignmentService {
     }
   }
 
+  /**
+   * Fans out realtime and notification side effects for a delivery transition.
+   *
+   * Callers invoke this only after the state change has already been committed
+   * to the database, so the persisted transition is authoritative. A failure in
+   * this fan-out must therefore never be reported back to the caller as a
+   * failed transition: the request would then contradict the durable state and
+   * force the client to retry a transition that already succeeded. Failures are
+   * logged for operators instead, and never propagate.
+   */
   private async announce(
     assignmentId: string,
     type: DeliveryRealtimeEventType,
@@ -673,41 +686,53 @@ export class DeliveryAssignmentService {
     notifyCustomer: boolean,
     notifyPartner: boolean,
   ): Promise<void> {
-    const db = this.prisma.requireClient();
-    const row = await db.deliveryAssignment.findUnique({
-      where: { id: assignmentId },
-      select: {
-        id: true,
-        branchId: true,
-        orderId: true,
-        order: { select: { orderNumber: true, userId: true } },
-        deliveryPartner: { select: { userId: true } },
-      },
-    });
-    if (!row || !row.order || !row.deliveryPartner) return;
-    const userIds: string[] = [];
-    if (notifyPartner) userIds.push(row.deliveryPartner.userId);
-    if (notifyCustomer) userIds.push(row.order.userId);
-    this.events.announce(
-      row.branchId,
-      type,
-      status,
-      row.id,
-      row.orderId,
-      row.order.orderNumber,
-      userIds,
-    );
-    const title = notificationTitle(type, row.order.orderNumber);
-    if (notifyPartner) {
-      await this.notifications.notify(
-        row.deliveryPartner.userId,
+    try {
+      const db = this.prisma.requireClient();
+      const row = await db.deliveryAssignment.findUnique({
+        where: { id: assignmentId },
+        select: {
+          id: true,
+          branchId: true,
+          orderId: true,
+          order: { select: { orderNumber: true, customerId: true } },
+          deliveryPartner: { select: { userId: true } },
+        },
+      });
+      if (!row || !row.order || !row.deliveryPartner) {
+        this.logger.warn(
+          `Delivery announcement skipped for assignment ${assignmentId} (${type}): assignment, order, or delivery partner could not be resolved.`,
+        );
+        return;
+      }
+      const userIds: string[] = [];
+      if (notifyPartner) userIds.push(row.deliveryPartner.userId);
+      if (notifyCustomer) userIds.push(row.order.customerId);
+      this.events.announce(
+        row.branchId,
         type,
-        title,
-        `Order ${row.order.orderNumber}`,
+        status,
+        row.id,
+        row.orderId,
+        row.order.orderNumber,
+        userIds,
       );
-    }
-    if (notifyCustomer) {
-      await this.notifications.notify(row.order.userId, type, title);
+      const title = notificationTitle(type, row.order.orderNumber);
+      if (notifyPartner) {
+        await this.notifications.notify(
+          row.deliveryPartner.userId,
+          type,
+          title,
+          `Order ${row.order.orderNumber}`,
+        );
+      }
+      if (notifyCustomer) {
+        await this.notifications.notify(row.order.customerId, type, title);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Delivery announcement failed for assignment ${assignmentId} (${type}). The ${status} transition is already committed and remains valid.`,
+        error instanceof Error ? error.stack : String(error),
+      );
     }
   }
 

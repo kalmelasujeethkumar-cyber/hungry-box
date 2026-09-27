@@ -15,6 +15,8 @@ import { CartIcon, LocationIcon } from '../../features/storefront/components/ico
 import { useCart } from '../../features/storefront/cart-context';
 import { useStorefront } from '../../features/storefront/storefront-context';
 import { formatPaise } from '../../lib/money';
+import { orderAttemptScope } from '../../lib/idempotency-attempt';
+import { useIdempotencyAttempt } from '../../lib/use-idempotency-attempt';
 import { PAYMENT_METHOD_LABELS } from '../../features/orders/order-status';
 
 type PayPhase = 'idle' | 'creating-intent' | 'awaiting-simulation' | 'verifying' | 'placing';
@@ -24,6 +26,7 @@ export default function CheckoutPage(): JSX.Element {
   const { token } = useAuth();
   const { branch } = useStorefront();
   const { hasItems, loading: cartLoading, clearCart } = useCart();
+  const idempotency = useIdempotencyAttempt();
 
   const [addresses, setAddresses] = useState<AddressDto[]>([]);
   const [addressesLoading, setAddressesLoading] = useState(true);
@@ -218,12 +221,15 @@ export default function CheckoutPage(): JSX.Element {
       .create(
         {
           paymentId,
-          idempotencyKey: crypto.randomUUID(),
+          // Stable for this logical attempt, so a retry after a lost response
+          // replays the order the server already committed.
+          idempotencyKey: idempotency.keyFor(orderAttemptScope('online', selectedAddressId!)),
           addressId: selectedAddressId!,
         },
         token!,
       )
       .then(async (order) => {
+        idempotency.complete();
         try {
           await clearCart();
         } catch {
@@ -247,10 +253,15 @@ export default function CheckoutPage(): JSX.Element {
     setPayPhase('placing');
     ordersApi
       .createCod(
-        { idempotencyKey: crypto.randomUUID(), addressId: selectedAddressId! },
+        {
+          // Same correctness rule as the online path: one key per attempt.
+          idempotencyKey: idempotency.keyFor(orderAttemptScope('cod', selectedAddressId!)),
+          addressId: selectedAddressId!,
+        },
         token!,
       )
       .then(async (order) => {
+        idempotency.complete();
         try {
           await clearCart();
         } catch {

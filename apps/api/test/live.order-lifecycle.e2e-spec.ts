@@ -8,8 +8,11 @@ import {
   advanceToReadyForPickup,
   bearer,
   buildPaidOrder,
+  createCustomerUser,
+  deleteCustomerUser,
   findGunturBranchId,
   liveLogin,
+  liveSuffix,
 } from './live-test-helpers';
 
 const RUN_LIVE_E2E = process.env.RUN_LIVE_E2E === '1';
@@ -35,11 +38,16 @@ describe.skipIf(!RUN_LIVE_E2E || !DB_AVAILABLE)('live order lifecycle (Postgres)
     const app = await createTestApp();
     const server = app.getHttpServer();
     let addressId: string | null = null;
+    let outsider: { userId: string; loginId: string; password: string } | null = null;
     try {
       const customer = await liveLogin(app, 'customer@gmail.com', '20252025');
       const manager = await liveLogin(app, 'branch1@gmail.com', '654654');
       const partner = await liveLogin(app, 'shiva@', '789789');
       const admin = await liveLogin(app, 'admin@gmail.com', '456456');
+      outsider = await createCustomerUser(app, {
+        loginId: `e2e-outsider-${liveSuffix().slice(0, 10)}@example.test`,
+      });
+      const outsiderSession = await liveLogin(app, outsider.loginId, outsider.password);
 
       const branchId = await findGunturBranchId(app, admin.token);
       const order = await buildPaidOrder(app, customer.token, branchId);
@@ -48,13 +56,16 @@ describe.skipIf(!RUN_LIVE_E2E || !DB_AVAILABLE)('live order lifecycle (Postgres)
       await advanceToReadyForPickup(app, manager.token, order.orderId);
 
       const partners = (
-        await request(server).get('/api/branch/partners').set(bearer(manager.token)).expect(200)
-      ).body as Array<{
-        id: string;
-        partnerId: string;
-        status: string;
-        availability: string;
-      }>;
+        (await request(server).get('/api/branch/partners').set(bearer(manager.token)).expect(200))
+          .body as {
+          items: Array<{
+            id: string;
+            partnerId: string;
+            status: string;
+            availability: string;
+          }>;
+        }
+      ).items;
       const seedPartner = partners.find(
         (row) => row.status === 'ACTIVE' && row.partnerId.startsWith('HB-DP-'),
       );
@@ -83,6 +94,26 @@ describe.skipIf(!RUN_LIVE_E2E || !DB_AVAILABLE)('live order lifecycle (Postgres)
       await partnerAction('pickup', 'PICKED_UP');
       await partnerAction('out-for-delivery', 'OUT_FOR_DELIVERY');
       await partnerAction('deliver', 'DELIVERED');
+
+      // Ownership is enforced in the database predicate, so a different but
+      // genuine customer must receive exactly the same 404 as a missing order.
+      const nonOwner = (
+        await request(server)
+          .get(`/api/orders/${order.orderId}/delivery-tracking`)
+          .set(bearer(outsiderSession.token))
+          .expect(404)
+      ).body as { message: string; statusCode: number };
+      const missing = (
+        await request(server)
+          .get('/api/orders/00000000-0000-0000-0000-000000000000/delivery-tracking')
+          .set(bearer(outsiderSession.token))
+          .expect(404)
+      ).body as { message: string; statusCode: number };
+      expect(nonOwner.message).toBe('Order not found');
+      expect(nonOwner).toEqual(missing);
+      // The rejected response must not leak either customer's identity.
+      expect(JSON.stringify(nonOwner)).not.toContain(outsider!.userId);
+      expect(JSON.stringify(nonOwner)).not.toContain(order.orderId);
 
       const tracking = (
         await request(server)
@@ -141,6 +172,9 @@ describe.skipIf(!RUN_LIVE_E2E || !DB_AVAILABLE)('live order lifecycle (Postgres)
             .set(bearer(customer.token))
             .expect(200);
         }
+      }
+      if (outsider) {
+        await deleteCustomerUser(app, { userId: outsider.userId }).catch(() => null);
       }
       await app.close();
     }

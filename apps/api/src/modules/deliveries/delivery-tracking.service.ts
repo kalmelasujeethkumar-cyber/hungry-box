@@ -44,13 +44,15 @@ export class DeliveryTrackingService {
   /** Customer-visible tracking for their own order. */
   async getTracking(customerUserId: string, orderId: string): Promise<DeliveryTrackingDto> {
     const db = this.prisma.requireClient();
+    // Ownership is enforced authoritatively by the database predicate rather than
+    // by comparing a field in application memory, so a non-owned order is
+    // indistinguishable from one that does not exist.
     const row = await db.order.findFirst({
-      where: { id: orderId },
+      where: { id: orderId, customerId: customerUserId },
       select: {
         id: true,
         orderNumber: true,
         status: true,
-        userId: true,
         address: { select: { latitude: true, longitude: true } },
         deliveryAssignments: {
           orderBy: { assignedAt: 'desc' },
@@ -89,7 +91,7 @@ export class DeliveryTrackingService {
       },
     });
 
-    if (!row || row.userId !== customerUserId) {
+    if (!row) {
       throw new NotFoundException('Order not found');
     }
 
@@ -109,13 +111,10 @@ export class DeliveryTrackingService {
       const partnerLon = toNumber(location.longitude);
       const addressLat = toNumber(address.latitude);
       const addressLon = toNumber(address.longitude);
-      if (
-        partnerLat != null &&
-        partnerLon != null &&
-        addressLat != null &&
-        addressLon != null
-      ) {
-        distanceToDestinationKm = Number(haversineKm(partnerLat, partnerLon, addressLat, addressLon).toFixed(1));
+      if (partnerLat != null && partnerLon != null && addressLat != null && addressLon != null) {
+        distanceToDestinationKm = Number(
+          haversineKm(partnerLat, partnerLon, addressLat, addressLon).toFixed(1),
+        );
       }
     }
 

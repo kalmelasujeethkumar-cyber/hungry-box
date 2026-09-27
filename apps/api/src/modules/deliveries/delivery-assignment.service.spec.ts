@@ -62,7 +62,7 @@ function assignmentDetail(status = 'ASSIGNED') {
       notes: null,
       branch: BRANCH,
       address: ADDRESS,
-      userId: 'cust-1',
+      customerId: 'cust-1',
     },
     deliveryPartner: { ...PARTNER, userId: 'u1' },
   };
@@ -76,7 +76,7 @@ function baseDb() {
         branchId: 'b1',
         status: 'READY_FOR_PICKUP',
         orderNumber: 'HB-20260925-000001',
-        userId: 'cust-1',
+        customerId: 'cust-1',
       }),
       update: vi.fn().mockResolvedValue({}),
     },
@@ -148,7 +148,7 @@ describe('DeliveryAssignmentService.assign', () => {
       branchId: 'b1',
       status: 'READY_FOR_PICKUP',
       orderNumber: 'HB-20260925-000001',
-      userId: 'cust-1',
+      customerId: 'cust-1',
     });
     db.deliveryAssignment.findFirst.mockResolvedValue(null);
     db.deliveryPartnerProfile.findUnique.mockResolvedValue({
@@ -206,7 +206,7 @@ describe('DeliveryAssignmentService.assign', () => {
       branchId: 'b-other',
       status: 'READY_FOR_PICKUP',
       orderNumber: 'HB-20260925-000002',
-      userId: 'cust-1',
+      customerId: 'cust-1',
     });
 
     await expect(service.assign(manager, 'o2', { deliveryPartnerId: 'p1' })).rejects.toThrow(
@@ -221,7 +221,7 @@ describe('DeliveryAssignmentService.assign', () => {
       branchId: 'b1',
       status: 'PREPARING',
       orderNumber: 'HB-20260925-000001',
-      userId: 'cust-1',
+      customerId: 'cust-1',
     });
 
     await expect(service.assign(superAdmin, 'o1', { deliveryPartnerId: 'p1' })).rejects.toThrow(
@@ -236,7 +236,7 @@ describe('DeliveryAssignmentService.assign', () => {
       branchId: 'b1',
       status: 'READY_FOR_PICKUP',
       orderNumber: 'HB-20260925-000001',
-      userId: 'cust-1',
+      customerId: 'cust-1',
     });
     db.deliveryAssignment.findFirst.mockResolvedValue({ id: 'existing-a' });
 
@@ -255,7 +255,7 @@ describe('DeliveryAssignmentService.assign', () => {
       branchId: 'b1',
       status: 'READY_FOR_PICKUP',
       orderNumber: 'HB-20260925-000001',
-      userId: 'cust-1',
+      customerId: 'cust-1',
     });
     db.deliveryAssignment.findFirst.mockResolvedValue(null);
     db.deliveryPartnerProfile.findUnique.mockResolvedValue({
@@ -279,7 +279,7 @@ describe('DeliveryAssignmentService.cancel', () => {
       id: 'o1',
       branchId: 'b1',
       orderNumber: 'HB-20260925-000001',
-      userId: 'cust-1',
+      customerId: 'cust-1',
     });
     db.deliveryAssignment.updateMany.mockResolvedValue({ count: 1 });
     db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('CANCELLED'));
@@ -314,7 +314,7 @@ describe('DeliveryAssignmentService.cancel', () => {
       id: 'o1',
       branchId: 'b1',
       orderNumber: 'HB-20260925-000001',
-      userId: 'cust-1',
+      customerId: 'cust-1',
     });
     db.deliveryAssignment.updateMany.mockResolvedValue({ count: 0 });
 
@@ -578,6 +578,147 @@ describe('DeliveryAssignmentService.pickup / outForDelivery / deliver', () => {
     });
 
     await expect(service.pickup('u1', 'a1')).rejects.toThrow(DeliveryConflictException);
+  });
+
+  it('reads the customer recipient from Order.customerId, never a userId column', async () => {
+    const { service, db, events, notifications } = buildService();
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      branchId: 'b1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'ACCEPTED',
+      orderId: 'o1',
+    });
+    db.order.findUnique.mockResolvedValue({ id: 'o1', status: 'READY_FOR_PICKUP' });
+    db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('PICKED_UP'));
+
+    await service.pickup('u1', 'a1');
+
+    type SelectArg = { select: { order?: { select?: Record<string, boolean> } } };
+    const calls = db.deliveryAssignment.findUnique.mock.calls as Array<[SelectArg, unknown]>;
+    const orderSelects = calls
+      .map(([args]) => args.select.order?.select)
+      .filter((sel): sel is Record<string, boolean> => sel !== undefined);
+
+    // No Order projection anywhere in this flow may reference a userId column.
+    for (const sel of orderSelects) {
+      expect(sel).not.toHaveProperty('userId');
+    }
+    // The announcement projection must read the real ownership column.
+    expect(orderSelects.some((sel) => 'customerId' in sel)).toBe(true);
+    expect(events.announce).toHaveBeenCalledWith(
+      'b1',
+      'delivery.picked_up',
+      'PICKED_UP',
+      'a1',
+      'o1',
+      'HB-20260925-000001',
+      ['cust-1'],
+    );
+    expect(notifications.notify).toHaveBeenCalledWith(
+      'cust-1',
+      'delivery.picked_up',
+      expect.any(String),
+    );
+  });
+
+  it('still reports a committed transition when the announcement fails', async () => {
+    const { service, db, events, notifications } = buildService();
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      branchId: 'b1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'ACCEPTED',
+      orderId: 'o1',
+    });
+    db.order.findUnique.mockResolvedValue({ id: 'o1', status: 'READY_FOR_PICKUP' });
+    db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('PICKED_UP'));
+    vi.mocked(events.announce).mockImplementation(() => {
+      throw new Error('realtime gateway unavailable');
+    });
+    vi.mocked(notifications.notify).mockRejectedValue(new Error('notification write failed'));
+
+    const result = await service.pickup('u1', 'a1');
+
+    // The pickup was committed, so the caller must not be told it failed.
+    expect(result.status).toBe('PICKED_UP');
+    expect(db.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'OUT_FOR_DELIVERY' }) }),
+    );
+  });
+
+  it('still reports a committed delivery when the announcement fails', async () => {
+    const { service, db, notifications } = buildService();
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      branchId: 'b1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'OUT_FOR_DELIVERY',
+      orderId: 'o1',
+    });
+    db.order.findUnique.mockResolvedValue({
+      id: 'o1',
+      status: 'OUT_FOR_DELIVERY',
+      orderNumber: 'HB-20260925-000001',
+      paymentStatus: 'PAID',
+      payments: [],
+    });
+    db.deliveryAssignment.update.mockResolvedValue({});
+    db.order.update.mockResolvedValue({});
+    db.deliveryAssignment.findUnique.mockResolvedValue(assignmentDetail('DELIVERED'));
+    vi.mocked(notifications.notify).mockRejectedValue(new Error('notification write failed'));
+
+    const result = await service.deliver('u1', 'a1');
+
+    expect(result.status).toBe('DELIVERED');
+    expect(db.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'DELIVERED' }) }),
+    );
+  });
+
+  it('completes a transition when the announcement lookup returns no assignment', async () => {
+    const { service, db, events, notifications } = buildService();
+    db.deliveryPartnerProfile.findUnique.mockResolvedValue({
+      id: 'p1',
+      branchId: 'b1',
+      status: 'ACTIVE',
+      userId: 'u1',
+    });
+    db.deliveryAssignment.findFirst.mockResolvedValue({
+      id: 'a1',
+      status: 'ACCEPTED',
+      orderId: 'o1',
+    });
+    db.order.findUnique.mockResolvedValue({ id: 'o1', status: 'READY_FOR_PICKUP' });
+    db.deliveryAssignment.update.mockResolvedValue({});
+    db.order.update.mockResolvedValue({});
+    // The announcement lookup finds nothing; the follow-up detail read still
+    // resolves, so only the side effects are lost.
+    db.deliveryAssignment.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(assignmentDetail('PICKED_UP'));
+
+    const result = await service.pickup('u1', 'a1');
+
+    expect(events.announce).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
+    // A missing announcement row must not mask the committed transition.
+    expect(db.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'OUT_FOR_DELIVERY' }) }),
+    );
+    expect(result.status).toBe('PICKED_UP');
   });
 
   it('moves a picked-up assignment to OUT_FOR_DELIVERY', async () => {

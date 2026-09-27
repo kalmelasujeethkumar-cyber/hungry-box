@@ -191,3 +191,37 @@ export async function deletePartnerUserAndProfile(
   await db.deliveryPartnerProfile.delete({ where: { id: opts.profileId } });
   await db.user.delete({ where: { id: opts.userId } });
 }
+
+/**
+ * Creates a throwaway CUSTOMER with a random password so a live spec can prove
+ * that order reads are ownership-scoped in the database and not merely by role.
+ * Callers are expected to delete the user in a finally block.
+ */
+export async function createCustomerUser(
+  app: INestApplication,
+  opts: { loginId: string },
+): Promise<{ userId: string; loginId: string; password: string }> {
+  const prisma = app.get(PrismaService);
+  const db = prisma.requireClient();
+  const password = `Pass-${liveSuffix()}`;
+  const user = await db.user.create({
+    data: {
+      loginId: opts.loginId,
+      passwordHash: hashSync(password),
+      role: 'CUSTOMER',
+      status: 'ACTIVE',
+      branchId: null,
+    },
+    select: { id: true },
+  });
+  return { userId: user.id, loginId: opts.loginId, password };
+}
+
+export async function deleteCustomerUser(
+  app: INestApplication,
+  opts: { userId: string },
+): Promise<void> {
+  const prisma = app.get(PrismaService);
+  const db = prisma.requireClient();
+  await db.user.delete({ where: { id: opts.userId } });
+}

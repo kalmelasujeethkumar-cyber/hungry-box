@@ -76,8 +76,9 @@ describe.skipIf(!RUN_LIVE_E2E || !DB_AVAILABLE)('live branch isolation (Postgres
       });
 
       const partners = (
-        await request(server).get('/api/branch/partners').set(bearer(manager.token)).expect(200)
-      ).body as Array<{ id: string }>;
+        (await request(server).get('/api/branch/partners').set(bearer(manager.token)).expect(200))
+          .body as { items: Array<{ id: string }> }
+      ).items;
       expect(partners.some((row) => row.id === foreignPartner!.profileId)).toBe(false);
 
       const candidates = (
