@@ -1031,11 +1031,15 @@ rather than from a bundle report:
   `features/delivery/use-delivery-realtime.tsx`, reached only from the Delivery Partner home
   and the customer order-tracking section.
 
-`AppRoutes.tsx` imports every page statically: there is no `React.lazy`, no dynamic
-`import()` and no `Suspense` anywhere in `apps/web/src`, so a customer visiting `/` currently
-downloads Super Admin, Branch Manager and Delivery Partner code and Recharts with it. No
-per-package byte attribution is claimed here, because producing one would require analysis
-tooling this phase is not allowed to add. Chunk-splitting and dead-code results belong to the
+`AppRoutes.tsx` imported every page statically, so a customer visiting `/` downloaded Super
+Admin, Branch Manager and Delivery Partner code and Recharts with it. The charts have since
+been moved behind a dynamic import - `features/analytics/recharts-charts.tsx` is now the only
+module that touches `recharts`, reached from `chart-slot.tsx`, and the panels short-circuit
+before the import when a period has no data - which took Recharts out of the entry chunk. The
+route table itself is still fully static: `AppRoutes.tsx` has no `React.lazy` and no route
+`Suspense`, so role-separated *page* code is still downloaded by every visitor. No per-package
+byte attribution is claimed here, because producing one would require analysis tooling this
+phase is not allowed to add. Chunk-splitting and dead-code results belong to the
 Phase 12D completion report, not to this document.
 
 ---
