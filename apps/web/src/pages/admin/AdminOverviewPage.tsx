@@ -2,16 +2,9 @@ import type { JSX } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  RevenueByBranchChartPanel,
+  RevenueOverTimeChartPanel,
+} from '../../features/analytics/chart-slot';
 import type {
   AdminDashboardQuery,
   BranchDto,
@@ -269,27 +262,7 @@ export default function AdminOverviewPage(): JSX.Element {
                   No time-series data for the selected period.
                 </p>
               ) : (
-                <div className="mt-4 h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={dashboard.timeSeries}>
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                      <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                      <YAxis
-                        tick={{ fontSize: 12 }}
-                        tickFormatter={(value) => formatPaise(Number(value))}
-                      />
-                      <Tooltip formatter={(value) => formatPaise(Number(value))} />
-                      <Area
-                        type="monotone"
-                        dataKey="revenueMinor"
-                        name="Revenue"
-                        stroke="#0091B9"
-                        fill="#0091B9"
-                        fillOpacity={0.15}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                <RevenueOverTimeChartPanel data={dashboard.timeSeries} />
               )}
             </section>
 
@@ -302,20 +275,7 @@ export default function AdminOverviewPage(): JSX.Element {
                   No branch data for the selected period.
                 </p>
               ) : (
-                <div className="mt-4 h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dashboard.branchComparison}>
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                      <XAxis dataKey="branchName" tick={{ fontSize: 12 }} />
-                      <YAxis
-                        tick={{ fontSize: 12 }}
-                        tickFormatter={(value) => formatPaise(Number(value))}
-                      />
-                      <Tooltip formatter={(value) => formatPaise(Number(value))} />
-                      <Bar dataKey="revenueMinor" name="Revenue" fill="#FF6500" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <RevenueByBranchChartPanel data={dashboard.branchComparison} />
               )}
             </section>
           </div>
@@ -461,3 +421,4 @@ export default function AdminOverviewPage(): JSX.Element {
     </AdminLayout>
   );
 }
+

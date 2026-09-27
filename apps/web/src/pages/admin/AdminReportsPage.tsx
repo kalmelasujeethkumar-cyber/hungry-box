@@ -1,16 +1,9 @@
 import type { JSX } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  OrdersOverTimeChartPanel,
+  RevenueBarChartPanel,
+} from '../../features/analytics/chart-slot';
 import type {
   AdminDashboardQuery,
   AdminReportQuery,
@@ -293,20 +286,7 @@ export default function AdminReportsPage(): JSX.Element {
                   No revenue data for the selected period.
                 </p>
               ) : (
-                <div className="mt-4 h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dashboard.timeSeries}>
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                      <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                      <YAxis
-                        tick={{ fontSize: 12 }}
-                        tickFormatter={(value) => formatPaise(Number(value))}
-                      />
-                      <Tooltip formatter={(value) => formatPaise(Number(value))} />
-                      <Bar dataKey="revenueMinor" name="Revenue" fill="#FF6500" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <RevenueBarChartPanel data={dashboard.timeSeries} />
               )}
             </section>
 
@@ -317,23 +297,7 @@ export default function AdminReportsPage(): JSX.Element {
                   No order data for the selected period.
                 </p>
               ) : (
-                <div className="mt-4 h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={dashboard.timeSeries}>
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                      <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                      <Tooltip />
-                      <Line
-                        type="monotone"
-                        dataKey="orders"
-                        name="Orders"
-                        stroke="#004E9B"
-                        strokeWidth={2}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                <OrdersOverTimeChartPanel data={dashboard.timeSeries} />
               )}
             </section>
           </div>
@@ -400,3 +364,4 @@ export default function AdminReportsPage(): JSX.Element {
     </AdminLayout>
   );
 }
+
