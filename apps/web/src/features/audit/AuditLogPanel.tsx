@@ -6,7 +6,7 @@ import { Button } from '../../components/Button';
 import EmptyState from '../../components/EmptyState';
 import { LoadingState } from '../../components/LoadingState';
 import { Notice } from '../../components/Notice';
-import { formatDateTime } from '../../lib/format';
+import { formatBusinessDateTime } from '../../lib/business-time';
 import { PackageIcon } from '../storefront/components/icons';
 import { AUDIT_KIND_OPTIONS, auditKindLabel, auditRoleLabel } from './audit-labels';
 
@@ -219,7 +219,7 @@ export function AuditLogPanel({ token, emptyMessage, branches }: AuditLogPanelPr
                   ) : null}
                 </div>
                 <span className="shrink-0 text-xs text-slate-400">
-                  {formatDateTime(event.createdAt)}
+                  {formatBusinessDateTime(event.createdAt)}
                 </span>
               </div>
             </li>

@@ -26,7 +26,7 @@ import { Notice } from '../../components/Notice';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '../../features/orders/order-status';
 import { formatPaise } from '../../lib/money';
-import { toISODate } from '../../lib/format';
+import { toBusinessISODate } from '../../lib/business-time';
 import AdminLayout from './AdminLayout';
 import { ADMIN_BRANCHES_PATH, ADMIN_ORDERS_PATH } from '../../routes/paths';
 
@@ -73,9 +73,9 @@ export default function AdminOverviewPage(): JSX.Element {
   const [from, setFrom] = useState(() => {
     const date = new Date();
     date.setDate(date.getDate() - 30);
-    return toISODate(date);
+    return toBusinessISODate(date);
   });
-  const [to, setTo] = useState(() => toISODate(new Date()));
+  const [to, setTo] = useState(() => toBusinessISODate(new Date()));
   const [bucket, setBucket] = useState<DashboardBucket>('day');
   const [dashboard, setDashboard] = useState<DashboardSummaryDto | null>(null);
   const [branches, setBranches] = useState<BranchDto[]>([]);

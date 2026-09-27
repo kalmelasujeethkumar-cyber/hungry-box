@@ -30,7 +30,7 @@ import { branchStatusLabel, branchStatusTone } from '../../components/status';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '../../features/orders/order-status';
 import { formatPaise } from '../../lib/money';
-import { toISODate } from '../../lib/format';
+import { toBusinessISODate } from '../../lib/business-time';
 import AdminLayout from './AdminLayout';
 
 const BUCKET_OPTIONS: { value: DashboardBucket; label: string }[] = [
@@ -92,9 +92,9 @@ export default function AdminReportsPage(): JSX.Element {
   const [from, setFrom] = useState(() => {
     const date = new Date();
     date.setDate(date.getDate() - 30);
-    return toISODate(date);
+    return toBusinessISODate(date);
   });
-  const [to, setTo] = useState(() => toISODate(new Date()));
+  const [to, setTo] = useState(() => toBusinessISODate(new Date()));
   const [bucket, setBucket] = useState<DashboardBucket>('day');
   const [status, setStatus] = useState<'' | OrderStatus>('');
   const [dashboard, setDashboard] = useState<DashboardSummaryDto | null>(null);

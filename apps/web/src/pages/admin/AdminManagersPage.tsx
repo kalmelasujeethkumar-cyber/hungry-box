@@ -22,7 +22,7 @@ import { SelectField } from '../../components/forms/SelectField';
 import { TextField } from '../../components/forms/TextField';
 import { userStatusLabel, userStatusTone } from '../../components/status';
 import { PlusIcon, UserIcon } from '../../features/storefront/components/icons';
-import { formatDateOnly } from '../../lib/format';
+import { formatBusinessDateOnly } from '../../lib/business-time';
 import AdminLayout from './AdminLayout';
 
 const PAGE_SIZE = 25;
@@ -308,7 +308,7 @@ export default function AdminManagersPage(): JSX.Element {
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-slate-400">
-                  Created {formatDateOnly(manager.createdAt)}
+                  Created {formatBusinessDateOnly(manager.createdAt)}
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {userActions(manager).map((action) => (

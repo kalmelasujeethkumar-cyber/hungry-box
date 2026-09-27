@@ -12,7 +12,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { PackageIcon } from '../../features/storefront/components/icons';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONES } from '../../features/orders/order-status';
 import { ORDER_STATUS_FILTERS } from '../../features/manager/manager-orders';
-import { formatPlacedAt } from '../../lib/format';
+import { formatBusinessPlacedAt } from '../../lib/business-time';
 import { formatPaise } from '../../lib/money';
 import ManagerLayout from './ManagerLayout';
 import { BRANCH_ORDERS_PATH } from '../../routes/paths';
@@ -88,7 +88,7 @@ export default function ManagerOrdersPage(): JSX.Element {
                 <div className="min-w-0">
                   <p className="font-bold text-brand-navy">{order.orderNumber}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {formatPlacedAt(order.placedAt)} · {order.itemCount} item
+                    {formatBusinessPlacedAt(order.placedAt)} · {order.itemCount} item
                     {order.itemCount === 1 ? '' : 's'} · {order.branch.name}
                   </p>
                 </div>

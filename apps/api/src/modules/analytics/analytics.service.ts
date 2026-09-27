@@ -20,8 +20,17 @@ import type { AdminDashboardQueryDto } from './dto/admin-dashboard-query.dto';
 import type { AdminReportQueryDto } from './dto/admin-report-query.dto';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
 const MAX_SERIES_POINTS = 366;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Hungry Box business reporting timezone. Every branch operates in India, and
+ * Asia/Kolkata has observed a constant UTC+05:30 with no daylight saving since 1945,
+ * so a fixed offset is exact here and keeps reporting boundaries independent of the
+ * host timezone. Stored timestamps stay UTC; only the reporting boundaries move.
+ */
+const BUSINESS_OFFSET_MINUTES = 330;
 
 interface OrderRow {
   id: string;
@@ -95,13 +104,30 @@ export class AnalyticsService {
         ...(query.branchId ? { branchId: query.branchId } : {}),
       },
     };
+    /**
+     * Headline revenue, product performance and payment-method money all describe
+     * payments that actually succeeded, so the rows behind those metrics are narrowed
+     * to orders whose payment is PAID. `nestedWhere` stays unfiltered because the COD
+     * summary needs PENDING rows to report cash still due.
+     */
+    const paidOrderWhere: Prisma.OrderWhereInput = {
+      paymentStatus: 'PAID',
+      placedAt: { gte: from, lte: to },
+      ...(query.branchId ? { branchId: query.branchId } : {}),
+    };
+    const paidNestedWhere = { order: paidOrderWhere };
 
     const [orders, items, payments, branches, activePartnerCount, assignments] = await Promise.all([
       db.order.findMany({ where: parentWhere, select: orderSelect, orderBy: { placedAt: 'asc' } }),
-      db.orderItem.findMany({ where: nestedWhere, select: orderItemSelect }),
+      db.orderItem.findMany({ where: paidNestedWhere, select: orderItemSelect }),
       db.payment.findMany({ where: nestedWhere, select: paymentSelect }),
       db.branch.findMany({ select: { id: true, name: true, status: true } }),
-      db.deliveryPartnerProfile.count({ where: { status: 'ACTIVE' } }),
+      db.deliveryPartnerProfile.count({
+        where: {
+          status: 'ACTIVE',
+          ...(query.branchId ? { branchId: query.branchId } : {}),
+        },
+      }),
       db.deliveryAssignment.findMany({ where: nestedWhere, select: assignmentSelect }),
     ]);
 
@@ -110,9 +136,8 @@ export class AnalyticsService {
     const paymentsTyped = payments as unknown as PaymentRow[];
     const assignmentsTyped = assignments as unknown as AssignmentRow[];
 
-    const paidTotal = ordersTyped
-      .filter((order) => order.paymentStatus === 'PAID')
-      .reduce((sum, order) => sum + order.totalMinor, 0);
+    const paidOrders = ordersTyped.filter((order) => order.paymentStatus === 'PAID');
+    const paidTotal = paidOrders.reduce((sum, order) => sum + order.totalMinor, 0);
 
     const bucket = this.resolveBucket(query.bucket, from, to);
 
@@ -121,7 +146,7 @@ export class AnalyticsService {
       orders: ordersTyped.length,
       customers: new Set(ordersTyped.map((order) => order.customerId)).size,
       averageOrderValueMinor:
-        ordersTyped.length > 0 ? Math.round(paidTotal / ordersTyped.length) : 0,
+        paidOrders.length > 0 ? Math.round(paidTotal / paidOrders.length) : 0,
       activeBranches: branches.filter((branch) => branch.status === 'ACTIVE').length,
       pausedBranches: branches.filter((branch) => branch.status === 'PAUSED').length,
       inactiveBranches: branches.filter((branch) => branch.status === 'INACTIVE').length,
@@ -206,9 +231,15 @@ export class AnalyticsService {
     return [...map.values()].sort((a, b) => b.count - a.count);
   }
 
+  /**
+   * Money actually collected, grouped by method, so the totals reconcile with
+   * `revenueMinor`. PENDING, AUTHORIZED, FAILED, CANCELLED and REFUNDED payments are
+   * excluded here; the COD summary reports the uncollected ones separately.
+   */
   private paymentMethodBreakdown(payments: PaymentRow[]): PaymentMethodAggregate[] {
     const map = new Map<PaymentMethod, PaymentMethodAggregate>();
     for (const payment of payments) {
+      if (payment.status !== 'PAID') continue;
       const entry = map.get(payment.method) ?? {
         method: payment.method,
         count: 0,
@@ -221,6 +252,13 @@ export class AnalyticsService {
     return [...map.values()].sort((a, b) => b.totalMinor - a.totalMinor);
   }
 
+  /**
+   * Cancellations counts cancelled orders and their gross order value. Refunds counts
+   * orders whose payment reached REFUNDED and their gross order value; the schema stores
+   * no partial refund amount, so the order total is the only available figure. Whether
+   * these should instead be net of refunds, or measured per refund transaction, is a
+   * business decision and is deliberately left unchanged here.
+   */
   private cancellationSummary(orders: OrderRow[]): { count: number; amountMinor: number } {
     return {
       count: orders.length,
@@ -402,57 +440,80 @@ export class AnalyticsService {
 
   private bucketStart(date: Date, bucket: DashboardBucket): Date {
     if (bucket === 'day') return this.startOfDay(date);
+    const start = this.startOfDay(date);
     if (bucket === 'week') {
-      const day = this.startOfDay(date);
-      const shift = (day.getUTCDay() + 6) % 7;
-      return new Date(day.getTime() - shift * DAY_MS);
+      const weekday = new Date(toBusinessWallMs(start)).getUTCDay();
+      return new Date(start.getTime() - ((weekday + 6) % 7) * DAY_MS);
     }
-    if (bucket === 'month') return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-    return new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const { year, month } = businessParts(date);
+    if (bucket === 'month') return fromBusinessWallMs(Date.UTC(year, month, 1));
+    return fromBusinessWallMs(Date.UTC(year, 0, 1));
   }
 
   private nextBucket(date: Date, bucket: DashboardBucket): Date {
     if (bucket === 'day') return new Date(date.getTime() + DAY_MS);
     if (bucket === 'week') return new Date(date.getTime() + 7 * DAY_MS);
-    if (bucket === 'month')
-      return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
-    return new Date(Date.UTC(date.getUTCFullYear() + 1, 0, 1));
+    const { year, month } = businessParts(date);
+    if (bucket === 'month') return fromBusinessWallMs(Date.UTC(year, month + 1, 1));
+    return fromBusinessWallMs(Date.UTC(year + 1, 0, 1));
   }
 
   private bucketKey(date: Date, bucket: DashboardBucket): string {
     if (bucket === 'day') {
-      return date.toISOString().slice(0, 10);
+      return new Date(toBusinessWallMs(date)).toISOString().slice(0, 10);
     }
     if (bucket === 'week') {
-      return this.bucketStart(date, 'week').toISOString().slice(0, 10);
+      return new Date(toBusinessWallMs(this.bucketStart(date, 'week'))).toISOString().slice(0, 10);
     }
-    if (bucket === 'month') {
-      return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-    }
-    return String(date.getUTCFullYear());
+    const { year, month } = businessParts(date);
+    if (bucket === 'month') return `${year}-${String(month + 1).padStart(2, '0')}`;
+    return String(year);
   }
 
   private labelFor(date: Date, bucket: DashboardBucket): string {
     if (bucket === 'day') {
-      return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
+      const { day, month } = businessParts(date);
+      return `${day} ${MONTHS[month]}`;
     }
     if (bucket === 'week') {
-      return `Week of ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
+      const { day, month } = businessParts(this.bucketStart(date, 'week'));
+      return `Week of ${day} ${MONTHS[month]}`;
     }
-    if (bucket === 'month') {
-      return `${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
-    }
-    return String(date.getUTCFullYear());
+    const { year, month } = businessParts(date);
+    if (bucket === 'month') return `${MONTHS[month]} ${year}`;
+    return String(year);
   }
 
+  /** 00:00:00.000 business time on the calendar day containing `date`. */
   private startOfDay(date: Date): Date {
-    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const { year, month, day } = businessParts(date);
+    return fromBusinessWallMs(Date.UTC(year, month, day));
   }
 
+  /** 23:59:59.999 business time on the calendar day containing `date`. */
   private endOfDay(date: Date): Date {
-    const day = this.startOfDay(date);
-    return new Date(day.getTime() + DAY_MS - 1);
+    return new Date(this.startOfDay(date).getTime() + DAY_MS - 1);
   }
+}
+
+/** Instant -> milliseconds of the same wall-clock reading taken in business time. */
+function toBusinessWallMs(date: Date): number {
+  return date.getTime() + BUSINESS_OFFSET_MINUTES * MINUTE_MS;
+}
+
+/** Milliseconds of a business-time wall clock -> the real instant. */
+function fromBusinessWallMs(wallMs: number): Date {
+  return new Date(wallMs - BUSINESS_OFFSET_MINUTES * MINUTE_MS);
+}
+
+/** Calendar fields of `date` as read in business time. */
+function businessParts(date: Date): { year: number; month: number; day: number } {
+  const wall = new Date(toBusinessWallMs(date));
+  return {
+    year: wall.getUTCFullYear(),
+    month: wall.getUTCMonth(),
+    day: wall.getUTCDate(),
+  };
 }
 
 function csvCell(value: unknown): string {

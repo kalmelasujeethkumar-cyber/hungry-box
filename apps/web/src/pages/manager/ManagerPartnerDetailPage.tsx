@@ -20,7 +20,7 @@ import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
 import { UserIcon } from '../../features/storefront/components/icons';
 import ManagerKycCard from '../../features/delivery/ManagerKycCard';
-import { formatDateOnly } from '../../lib/format';
+import { formatBusinessDateOnly } from '../../lib/business-time';
 import ManagerLayout from './ManagerLayout';
 import { BRANCH_PARTNERS_PATH } from '../../routes/paths';
 
@@ -146,7 +146,7 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
             {profile.partnerId} · {profile.branch.name}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Joined {profile.joinedAt ? formatDateOnly(profile.joinedAt) : '—'}
+            Joined {profile.joinedAt ? formatBusinessDateOnly(profile.joinedAt) : '—'}
           </p>
         </div>
         <Link
@@ -258,7 +258,7 @@ export default function ManagerPartnerDetailPage(): JSX.Element {
             <Field label="Email" value={profile.email} />
             <Field
               label="Date of birth"
-              value={profile.dateOfBirth ? formatDateOnly(profile.dateOfBirth) : null}
+              value={profile.dateOfBirth ? formatBusinessDateOnly(profile.dateOfBirth) : null}
             />
             <Field label="Gender" value={profile.gender} />
             <Field

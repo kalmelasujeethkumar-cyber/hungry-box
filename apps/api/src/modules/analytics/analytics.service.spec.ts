@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import type { Prisma } from '../../generated/prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AnalyticsService } from './analytics.service';
@@ -21,8 +22,38 @@ function order(overrides: Partial<Record<string, unknown>>) {
   };
 }
 
+function emptyDialect() {
+  return {
+    orderItem: { findMany: vi.fn().mockResolvedValue([]) },
+    payment: { findMany: vi.fn().mockResolvedValue([]) },
+    branch: { findMany: vi.fn().mockResolvedValue([]) },
+    deliveryPartnerProfile: { count: vi.fn().mockResolvedValue(0) },
+    deliveryAssignment: { findMany: vi.fn().mockResolvedValue([]) },
+  };
+}
+
+/** UTC instants paired with the Asia/Kolkata reading the dashboard must report. */
+const IST = {
+  /** 00:00:00.000 IST on 2026-03-10 */
+  dayStart: new Date('2026-03-09T18:30:00.000Z'),
+  /** 05:29:00 IST on 2026-03-10 */
+  beforeOffsetBoundary: new Date('2026-03-09T23:59:00.000Z'),
+  /** 23:59:59.999 IST on 2026-03-10 */
+  lastInstantOfDay: new Date('2026-03-10T18:29:59.999Z'),
+  /** 00:00:00.000 IST on 2026-03-11 */
+  nextDayStart: new Date('2026-03-10T18:30:00.000Z'),
+} as const;
+
 describe('AnalyticsService.dashboard', () => {
   it('aggregates revenue, orders, customers, statuses, methods, delivery, branches and time series', async () => {
+    const itemsByOrder: Record<string, Array<Record<string, unknown>>> = {
+      o1: [
+        { productId: 'p1', productName: 'Biryani', quantity: 2, lineTotalMinor: 20000 },
+        { productId: 'p2', productName: 'Spring Roll', quantity: 1, lineTotalMinor: 15000 },
+      ],
+      o2: [{ productId: 'p1', productName: 'Biryani', quantity: 1, lineTotalMinor: 10000 }],
+    };
+    const paymentStatusByOrder: Record<string, string> = { o1: 'PAID', o2: 'REFUNDED' };
     const db = {
       order: {
         findMany: vi.fn().mockResolvedValue([
@@ -52,11 +83,15 @@ describe('AnalyticsService.dashboard', () => {
         ]),
       },
       orderItem: {
-        findMany: vi.fn().mockResolvedValue([
-          { productId: 'p1', productName: 'Biryani', quantity: 2, lineTotalMinor: 20000 },
-          { productId: 'p2', productName: 'Spring Roll', quantity: 1, lineTotalMinor: 15000 },
-          { productId: 'p1', productName: 'Biryani', quantity: 1, lineTotalMinor: 10000 },
-        ]),
+        findMany: vi.fn().mockImplementation(
+          ({ where }: { where: { order: Prisma.OrderWhereInput } }) => {
+            const required = where.order.paymentStatus;
+            const rows = Object.entries(itemsByOrder).flatMap(([orderId, items]) =>
+              required && paymentStatusByOrder[orderId] !== required ? [] : items,
+            );
+            return Promise.resolve(rows);
+          },
+        ),
       },
       payment: {
         findMany: vi.fn().mockResolvedValue([
@@ -93,7 +128,7 @@ describe('AnalyticsService.dashboard', () => {
     expect(result.revenueMinor).toBe(35000);
     expect(result.orders).toBe(3);
     expect(result.customers).toBe(2);
-    expect(result.averageOrderValueMinor).toBe(11667);
+    expect(result.averageOrderValueMinor).toBe(17500);
     expect(result.activeBranches).toBe(1);
     expect(result.pausedBranches).toBe(1);
     expect(result.inactiveBranches).toBe(0);
@@ -106,7 +141,6 @@ describe('AnalyticsService.dashboard', () => {
     ]);
     expect(result.paymentMethodBreakdown).toEqual([
       { method: 'COD', count: 2, totalMinor: 35000 },
-      { method: 'UPI', count: 1, totalMinor: 5000 },
     ]);
     expect(result.cod).toEqual({
       totalOrders: 2,
@@ -139,12 +173,28 @@ describe('AnalyticsService.dashboard', () => {
       },
     ]);
     expect(result.topProducts).toEqual([
-      { productId: 'p1', productName: 'Biryani', quantity: 3, revenueMinor: 30000 },
+      { productId: 'p1', productName: 'Biryani', quantity: 2, revenueMinor: 20000 },
       { productId: 'p2', productName: 'Spring Roll', quantity: 1, revenueMinor: 15000 },
     ]);
     expect(result.timeSeries).toEqual([
       { period: '2026-01', label: 'Jan 2026', orders: 3, revenueMinor: 35000, cancelledOrders: 1 },
     ]);
+  });
+
+  it('restricts order items behind top products to paid orders', async () => {
+    const db = {
+      order: { findMany: vi.fn().mockResolvedValue([order({})]) },
+      ...emptyDialect(),
+    };
+    const service = buildService(db);
+
+    await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(db.orderItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { order: { paymentStatus: 'PAID', placedAt: expect.anything() } },
+      }),
+    );
   });
 
   it('zero-fills empty days in a daily time series', async () => {
@@ -157,11 +207,7 @@ describe('AnalyticsService.dashboard', () => {
             order({ id: 'o3', placedAt: new Date('2026-01-03T10:00:00.000Z') }),
           ]),
       },
-      orderItem: { findMany: vi.fn().mockResolvedValue([]) },
-      payment: { findMany: vi.fn().mockResolvedValue([]) },
-      branch: { findMany: vi.fn().mockResolvedValue([]) },
-      deliveryPartnerProfile: { count: vi.fn().mockResolvedValue(0) },
-      deliveryAssignment: { findMany: vi.fn().mockResolvedValue([]) },
+      ...emptyDialect(),
     };
     const service = buildService(db);
 
@@ -175,14 +221,7 @@ describe('AnalyticsService.dashboard', () => {
   });
 
   it('defaults the bucket by range span and coarsens an oversized requested bucket', async () => {
-    const db = {
-      order: { findMany: vi.fn().mockResolvedValue([]) },
-      orderItem: { findMany: vi.fn().mockResolvedValue([]) },
-      payment: { findMany: vi.fn().mockResolvedValue([]) },
-      branch: { findMany: vi.fn().mockResolvedValue([]) },
-      deliveryPartnerProfile: { count: vi.fn().mockResolvedValue(0) },
-      deliveryAssignment: { findMany: vi.fn().mockResolvedValue([]) },
-    };
+    const db = { order: { findMany: vi.fn().mockResolvedValue([]) }, ...emptyDialect() };
     const service = buildService(db);
 
     const daily = await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
@@ -207,7 +246,7 @@ describe('AnalyticsService.dashboard', () => {
           order({ id: 'o3', status: 'DELIVERED', paymentStatus: 'PAID', totalMinor: 55000 }),
         ]),
       },
-      orderItem: { findMany: vi.fn().mockResolvedValue([]) },
+      ...emptyDialect(),
       payment: {
         findMany: vi.fn().mockResolvedValue([
           { method: 'COD', amountMinor: 10000, orderId: 'o1', status: 'PENDING' },
@@ -215,9 +254,6 @@ describe('AnalyticsService.dashboard', () => {
           { method: 'COD', amountMinor: 55000, orderId: 'o3', status: 'PAID' },
         ]),
       },
-      branch: { findMany: vi.fn().mockResolvedValue([]) },
-      deliveryPartnerProfile: { count: vi.fn().mockResolvedValue(0) },
-      deliveryAssignment: { findMany: vi.fn().mockResolvedValue([]) },
     };
     const service = buildService(db);
 
@@ -233,19 +269,341 @@ describe('AnalyticsService.dashboard', () => {
   });
 
   it('rejects a reversed range', async () => {
-    const db = {
-      order: { findMany: vi.fn().mockResolvedValue([]) },
-      orderItem: { findMany: vi.fn().mockResolvedValue([]) },
-      payment: { findMany: vi.fn().mockResolvedValue([]) },
-      branch: { findMany: vi.fn().mockResolvedValue([]) },
-      deliveryPartnerProfile: { count: vi.fn().mockResolvedValue(0) },
-      deliveryAssignment: { findMany: vi.fn().mockResolvedValue([]) },
-    };
+    const db = { order: { findMany: vi.fn().mockResolvedValue([]) }, ...emptyDialect() };
     const service = buildService(db);
 
     await expect(service.dashboard({ from: '2026-02-01', to: '2026-01-01' })).rejects.toThrow(
       BadRequestException,
     );
+  });
+});
+
+describe('AnalyticsService revenue semantics', () => {
+  function dashboardWith(orders: Array<ReturnType<typeof order>>, payments: unknown[] = []) {
+    const db = {
+      order: { findMany: vi.fn().mockResolvedValue(orders) },
+      ...emptyDialect(),
+      payment: { findMany: vi.fn().mockResolvedValue(payments) },
+    };
+    return { service: buildService(db), db };
+  }
+
+  it('counts only paid orders toward revenue', async () => {
+    const { service } = dashboardWith([
+      order({ id: 'o1', paymentStatus: 'PAID', totalMinor: 20000 }),
+      order({ id: 'o2', paymentStatus: 'PENDING', totalMinor: 90000 }),
+      order({ id: 'o3', paymentStatus: 'AUTHORIZED', totalMinor: 70000 }),
+      order({ id: 'o4', paymentStatus: 'FAILED', totalMinor: 60000 }),
+      order({ id: 'o5', paymentStatus: 'CANCELLED', totalMinor: 50000 }),
+      order({ id: 'o6', paymentStatus: 'REFUNDED', totalMinor: 40000 }),
+    ]);
+
+    const result = await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(result.revenueMinor).toBe(20000);
+  });
+
+  it('averages over paid orders only, so cancelled orders do not deflate the average', async () => {
+    const { service } = dashboardWith([
+      order({ id: 'o1', paymentStatus: 'PAID', totalMinor: 20000 }),
+      order({ id: 'o2', paymentStatus: 'PAID', totalMinor: 30000 }),
+      order({ id: 'o3', status: 'CANCELLED', paymentStatus: 'CANCELLED', totalMinor: 50000 }),
+    ]);
+
+    const result = await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(result.revenueMinor).toBe(50000);
+    expect(result.averageOrderValueMinor).toBe(25000);
+    expect(result.orders).toBe(3);
+  });
+
+  it('reports a zero average when no order has been paid', async () => {
+    const { service } = dashboardWith([
+      order({ id: 'o1', paymentStatus: 'PENDING', totalMinor: 10000 }),
+      order({ id: 'o2', status: 'CANCELLED', paymentStatus: 'CANCELLED', totalMinor: 20000 }),
+    ]);
+
+    const result = await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(result.revenueMinor).toBe(0);
+    expect(result.averageOrderValueMinor).toBe(0);
+    expect(result.orders).toBe(2);
+  });
+
+  it('reports a zero average when the period has no orders at all', async () => {
+    const { service } = dashboardWith([]);
+
+    const result = await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(result.revenueMinor).toBe(0);
+    expect(result.averageOrderValueMinor).toBe(0);
+    expect(result.orders).toBe(0);
+    expect(result.topProducts).toEqual([]);
+    expect(result.timeSeries.every((point) => point.orders === 0 && point.revenueMinor === 0)).toBe(
+      true,
+    );
+  });
+
+  it('reconciles payment-method revenue with headline revenue under PAID semantics', async () => {
+    const { service } = dashboardWith(
+      [
+        order({ id: 'o1', paymentStatus: 'PAID', totalMinor: 20000 }),
+        order({ id: 'o2', paymentStatus: 'PAID', totalMinor: 30000 }),
+        order({ id: 'o3', paymentStatus: 'PENDING', totalMinor: 40000 }),
+        order({ id: 'o4', status: 'CANCELLED', paymentStatus: 'REFUNDED', totalMinor: 50000 }),
+      ],
+      [
+        { method: 'UPI', amountMinor: 20000, orderId: 'o1', status: 'PAID' },
+        { method: 'COD', amountMinor: 30000, orderId: 'o2', status: 'PAID' },
+        { method: 'UPI', amountMinor: 40000, orderId: 'o3', status: 'PENDING' },
+        { method: 'CARD', amountMinor: 50000, orderId: 'o4', status: 'REFUNDED' },
+        { method: 'WALLET', amountMinor: 11000, orderId: null, status: 'FAILED' },
+      ],
+    );
+
+    const result = await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(result.paymentMethodBreakdown).toEqual([
+      { method: 'COD', count: 1, totalMinor: 30000 },
+      { method: 'UPI', count: 1, totalMinor: 20000 },
+    ]);
+    const breakdownTotal = result.paymentMethodBreakdown.reduce(
+      (sum, method) => sum + method.totalMinor,
+      0,
+    );
+    expect(breakdownTotal).toBe(result.revenueMinor);
+  });
+
+  it('keeps the COD summary on unpaid payments while revenue stays paid-only', async () => {
+    const { service } = dashboardWith(
+      [
+        order({ id: 'o1', paymentStatus: 'PAID', totalMinor: 20000 }),
+        order({ id: 'o2', status: 'OUT_FOR_DELIVERY', paymentStatus: 'PENDING', totalMinor: 15000 }),
+      ],
+      [
+        { method: 'COD', amountMinor: 20000, orderId: 'o1', status: 'PAID' },
+        { method: 'COD', amountMinor: 15000, orderId: 'o2', status: 'PENDING' },
+      ],
+    );
+
+    const result = await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(result.revenueMinor).toBe(20000);
+    expect(result.cod.uncollectedMinor).toBe(15000);
+  });
+});
+
+describe('AnalyticsService active partner scope', () => {
+  it('counts active partners across all branches when unfiltered', async () => {
+    const db = { order: { findMany: vi.fn().mockResolvedValue([]) }, ...emptyDialect() };
+    const service = buildService(db);
+
+    await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(db.deliveryPartnerProfile.count).toHaveBeenCalledWith({ where: { status: 'ACTIVE' } });
+  });
+
+  it('counts active partners of the selected branch when branch filtered', async () => {
+    const db = { order: { findMany: vi.fn().mockResolvedValue([]) }, ...emptyDialect() };
+    const service = buildService(db);
+
+    await service.dashboard({ from: '2026-01-01', to: '2026-01-31', branchId: 'b2' });
+
+    expect(db.deliveryPartnerProfile.count).toHaveBeenCalledWith({
+      where: { status: 'ACTIVE', branchId: 'b2' },
+    });
+  });
+});
+
+describe('AnalyticsService branch isolation', () => {
+  it('applies the selected branch to every scoped query', async () => {
+    const db = { order: { findMany: vi.fn().mockResolvedValue([]) }, ...emptyDialect() };
+    const service = buildService(db);
+
+    await service.dashboard({ from: '2026-01-01', to: '2026-01-31', branchId: 'b1' });
+
+    expect(db.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ branchId: 'b1' }) }),
+    );
+    expect(db.orderItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { order: expect.objectContaining({ branchId: 'b1' }) },
+      }),
+    );
+    expect(db.payment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { order: expect.objectContaining({ branchId: 'b1' }) } }),
+    );
+    expect(db.deliveryAssignment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { order: expect.objectContaining({ branchId: 'b1' }) } }),
+    );
+  });
+
+  it('does not aggregate another branch into a branch-filtered result', async () => {
+    const db = {
+      order: {
+        findMany: vi.fn().mockResolvedValue([
+          order({ id: 'o1', branchId: 'b1', customerId: 'c1', totalMinor: 10000 }),
+        ]),
+      },
+      ...emptyDialect(),
+      branch: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'b1', name: 'Guntur', status: 'ACTIVE' },
+          { id: 'b2', name: 'Hyderabad', status: 'ACTIVE' },
+        ]),
+      },
+    };
+    const service = buildService(db);
+
+    const result = await service.dashboard({
+      from: '2026-01-01',
+      to: '2026-01-31',
+      branchId: 'b1',
+    });
+
+    expect(result.revenueMinor).toBe(10000);
+    const hyderabad = result.branchComparison.find((row) => row.branchId === 'b2');
+    expect(hyderabad?.orders).toBe(0);
+    expect(hyderabad?.revenueMinor).toBe(0);
+  });
+});
+
+describe('AnalyticsService business-time reporting boundaries', () => {
+  function seriesFor(orders: Array<ReturnType<typeof order>>, query: Record<string, string>) {
+    const db = {
+      order: { findMany: vi.fn().mockResolvedValue(orders) },
+      ...emptyDialect(),
+    };
+    return buildService(db).dashboard(query);
+  }
+
+  it('scopes the reported range to midnight-to-midnight business time', async () => {
+    const db = { order: { findMany: vi.fn().mockResolvedValue([]) }, ...emptyDialect() };
+    const service = buildService(db);
+
+    await service.dashboard({ from: '2026-03-10', to: '2026-03-10' });
+
+    expect(db.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          placedAt: {
+            gte: new Date('2026-03-09T18:30:00.000Z'),
+            lte: new Date('2026-03-10T18:29:59.999Z'),
+          },
+        }),
+      }),
+    );
+  });
+
+  it('buckets 05:29 IST and 00:00 IST into the same business day', async () => {
+    const result = await seriesFor(
+      [
+        order({ id: 'o1', placedAt: IST.beforeOffsetBoundary }),
+        order({ id: 'o2', placedAt: IST.nextDayStart }),
+      ],
+      { from: '2026-03-10', to: '2026-03-11', bucket: 'day' },
+    );
+
+    const periods = result.timeSeries.map((point) => point.period);
+    expect(periods).toContain('2026-03-10');
+    expect(periods).not.toContain('2026-03-09');
+    const first = result.timeSeries.find((point) => point.period === '2026-03-10');
+    const second = result.timeSeries.find((point) => point.period === '2026-03-11');
+    expect(first?.orders).toBe(1);
+    expect(second?.orders).toBe(1);
+  });
+
+  it('keeps 23:59:59.999 IST inside its own day and 00:00 IST in the next', async () => {
+    const result = await seriesFor(
+      [
+        order({ id: 'o1', placedAt: IST.lastInstantOfDay }),
+        order({ id: 'o2', placedAt: IST.nextDayStart }),
+      ],
+      { from: '2026-03-10', to: '2026-03-11', bucket: 'day' },
+    );
+
+    const day10 = result.timeSeries.find((point) => point.period === '2026-03-10');
+    const day11 = result.timeSeries.find((point) => point.period === '2026-03-11');
+    expect(day10?.orders).toBe(1);
+    expect(day11?.orders).toBe(1);
+    expect(day10?.label).toBe('10 Mar');
+    expect(day11?.label).toBe('11 Mar');
+  });
+
+  it('starts the first bucket of a range at business midnight', async () => {
+    const result = await seriesFor([], { from: '2026-03-10', to: '2026-03-10', bucket: 'day' });
+
+    expect(result.timeSeries).toHaveLength(1);
+    expect(result.timeSeries[0]).toEqual({
+      period: '2026-03-10',
+      label: '10 Mar',
+      orders: 0,
+      revenueMinor: 0,
+      cancelledOrders: 0,
+    });
+  });
+
+  it('walks weekly buckets back to Monday business time', async () => {
+    const result = await seriesFor(
+      [
+        // 12:00 IST Wednesday, and 12:00 IST Sunday of the same Monday-started week.
+        order({ id: 'o1', placedAt: new Date('2026-03-11T06:30:00.000Z') }),
+        order({ id: 'o2', placedAt: new Date('2026-03-15T06:30:00.000Z') }),
+      ],
+      { from: '2026-03-09', to: '2026-03-15', bucket: 'week' },
+    );
+
+    expect(result.timeSeries).toHaveLength(1);
+    expect(result.timeSeries[0].period).toBe('2026-03-09');
+    expect(result.timeSeries[0].label).toBe('Week of 9 Mar');
+    expect(result.timeSeries[0].orders).toBe(2);
+  });
+
+  it('splits monthly buckets on the business month boundary', async () => {
+    const result = await seriesFor(
+      [
+        order({ id: 'o1', placedAt: new Date('2026-02-28T18:29:59.000Z') }),
+        order({ id: 'o2', placedAt: new Date('2026-02-28T18:30:00.000Z') }),
+      ],
+      { from: '2026-02-01', to: '2026-03-31', bucket: 'month' },
+    );
+
+    expect(result.timeSeries.map((point) => point.period)).toEqual(['2026-02', '2026-03']);
+    expect(result.timeSeries[0].orders).toBe(1);
+    expect(result.timeSeries[1].orders).toBe(1);
+  });
+
+  it('splits yearly buckets on the business year boundary', async () => {
+    const result = await seriesFor(
+      [
+        order({ id: 'o1', placedAt: new Date('2025-12-31T18:29:59.000Z') }),
+        order({ id: 'o2', placedAt: new Date('2025-12-31T18:30:00.000Z') }),
+      ],
+      { from: '2025-01-01', to: '2026-12-31', bucket: 'year' },
+    );
+
+    expect(result.timeSeries.map((point) => point.period)).toEqual(['2025', '2026']);
+  });
+});
+
+describe('AnalyticsService cancellation and refund reporting', () => {
+  it('reports cancelled orders and refunded orders as gross order value', async () => {
+    const db = {
+      order: {
+        findMany: vi.fn().mockResolvedValue([
+          order({ id: 'o1', status: 'CANCELLED', paymentStatus: 'CANCELLED', totalMinor: 5000 }),
+          order({ id: 'o2', status: 'CANCELLED', paymentStatus: 'REFUNDED', totalMinor: 7000 }),
+          order({ id: 'o3', status: 'DELIVERED', paymentStatus: 'PAID', totalMinor: 9000 }),
+        ]),
+      },
+      ...emptyDialect(),
+    };
+    const service = buildService(db);
+
+    const result = await service.dashboard({ from: '2026-01-01', to: '2026-01-31' });
+
+    expect(result.cancellations).toEqual({ count: 2, amountMinor: 12000 });
+    expect(result.refunds).toEqual({ count: 1, amountMinor: 7000 });
   });
 });
 
@@ -284,8 +642,8 @@ describe('AnalyticsService.ordersReportCsv', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           placedAt: {
-            gte: new Date('2026-01-01T00:00:00.000Z'),
-            lte: new Date('2026-01-31T23:59:59.999Z'),
+            gte: new Date('2025-12-31T18:30:00.000Z'),
+            lte: new Date('2026-01-31T18:29:59.999Z'),
           },
         }),
         take: 1000,

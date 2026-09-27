@@ -18,26 +18,33 @@ export interface OrderStatusAggregate {
 
 export interface PaymentMethodAggregate {
   method: PaymentMethod;
+  /** Settled payments of this method. */
   count: number;
+  /** Money from those settled payments; reconciles with DashboardSummaryDto.revenueMinor. */
   totalMinor: number;
 }
 
 export interface ProductPerformanceAggregate {
   productId: string | null;
   productName: string;
+  /** Quantity on paid orders. */
   quantity: number;
+  /** Line totals from paid orders. */
   revenueMinor: number;
 }
 
 export interface TimeSeriesPoint {
   period: string;
   label: string;
+  /** Orders placed in the bucket, including cancelled ones. */
   orders: number;
+  /** Money from paid orders in the bucket. */
   revenueMinor: number;
   cancelledOrders: number;
 }
 
 export interface DeliverySummaryDto {
+  /** Active partners in the selected branch, or across all branches when unfiltered. */
   activePartners: number;
   assigned: number;
   outForDelivery: number;
@@ -72,9 +79,17 @@ export interface BranchPerformanceDto {
 }
 
 export interface DashboardSummaryDto {
+  /** Money from orders whose payment reached PAID. */
   revenueMinor: number;
+  /**
+   * Every order placed in the period, including cancelled ones. Cancellations are
+   * reported separately by `cancellations` and `orderStatusBreakdown`, so this stays a
+   * count of placed orders rather than a count of successful orders.
+   */
   orders: number;
+  /** Distinct customers who placed an order in the period. */
   customers: number;
+  /** `revenueMinor` divided by the number of paid orders; 0 when there are none. */
   averageOrderValueMinor: number;
   activeBranches: number;
   pausedBranches: number;
